@@ -9,7 +9,7 @@
 
     <name>AuthFI Java SDK</name>
     <description>Full AuthFI SDK — auth, connect, users, orgs, permissions, workload identity</description>
-    <url>https://github.com/queflyhq/authfi</url>
+    <url>https://github.com/queflyhq/authfi-java-sdk</url>
 
     <organization>
         <name>Quefly</name>
@@ -24,9 +24,20 @@
     </licenses>
 
     <scm>
-        <url>https://github.com/queflyhq/authfi</url>
-        <connection>scm:git:git://github.com/queflyhq/authfi.git</connection>
+        <url>https://github.com/queflyhq/authfi-java-sdk</url>
+        <connection>scm:git:git://github.com/queflyhq/authfi-java-sdk.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/queflyhq/authfi-java-sdk.git</developerConnection>
     </scm>
+
+    <developers>
+        <developer>
+            <id>piyush</id>
+            <name>Piyush Mohanty</name>
+            <email>piyush@quefly.com</email>
+            <organization>Quefly</organization>
+            <organizationUrl>https://quefly.com</organizationUrl>
+        </developer>
+    </developers>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -100,4 +111,71 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.3.1</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.7.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.4</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                                <configuration>
+                                    <gpgArguments>
+                                        <arg>--pinentry-mode</arg>
+                                        <arg>loopback</arg>
+                                    </gpgArguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.5.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>published</waitUntil>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
