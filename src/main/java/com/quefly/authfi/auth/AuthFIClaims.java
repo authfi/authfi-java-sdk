@@ -1,10 +1,11 @@
 package com.quefly.authfi.auth;
 
-import com.auth0.jwt.interfaces.Claim;
-import com.auth0.jwt.interfaces.DecodedJWT;
+import com.nimbusds.jwt.JWTClaimsSet;
 
+import java.text.ParseException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /** Parsed and verified AuthFI JWT claims. */
 public record AuthFIClaims(
@@ -22,12 +23,11 @@ public record AuthFIClaims(
     long iat,
     long exp,
     String issuer,
-    DecodedJWT raw
+    Map<String, Object> raw
 ) {
-    /** Build from a verified DecodedJWT. */
-    static AuthFIClaims from(DecodedJWT jwt) {
+    static AuthFIClaims from(JWTClaimsSet jwt) {
         return new AuthFIClaims(
-            str(jwt, "sub"),
+            jwt.getSubject() != null ? jwt.getSubject() : "",
             str(jwt, "email"),
             str(jwt, "name"),
             bool(jwt, "email_verified"),
@@ -38,47 +38,53 @@ public record AuthFIClaims(
             strList(jwt, "roles"),
             strList(jwt, "permissions"),
             strList(jwt, "groups"),
-            jwt.getIssuedAtAsInstant() != null ? jwt.getIssuedAtAsInstant().getEpochSecond() : 0,
-            jwt.getExpiresAtAsInstant() != null ? jwt.getExpiresAtAsInstant().getEpochSecond() : 0,
-            jwt.getIssuer(),
-            jwt
+            jwt.getIssueTime() != null ? jwt.getIssueTime().toInstant().getEpochSecond() : 0,
+            jwt.getExpirationTime() != null ? jwt.getExpirationTime().toInstant().getEpochSecond() : 0,
+            jwt.getIssuer() != null ? jwt.getIssuer() : "",
+            Collections.unmodifiableMap(jwt.getClaims())
         );
     }
 
-    /** Check if the user has a specific permission. */
     public boolean hasPermission(String permission) {
         return permissions.contains(permission);
     }
 
-    /** Check if the user has a specific role. */
     public boolean hasRole(String role) {
         return roles.contains(role);
     }
 
-    /** Check if the user belongs to a specific group. */
     public boolean inGroup(String group) {
         return groups.contains(group);
     }
 
-    /** Check if the user is in a specific org. */
     public boolean inOrg(String slug) {
         return slug.equals(orgSlug);
     }
 
-    private static String str(DecodedJWT jwt, String key) {
-        Claim c = jwt.getClaim(key);
-        return c.isMissing() ? "" : c.asString();
+    private static String str(JWTClaimsSet jwt, String key) {
+        try {
+            String v = jwt.getStringClaim(key);
+            return v != null ? v : "";
+        } catch (ParseException e) {
+            return "";
+        }
     }
 
-    private static boolean bool(DecodedJWT jwt, String key) {
-        Claim c = jwt.getClaim(key);
-        return !c.isMissing() && Boolean.TRUE.equals(c.asBoolean());
+    private static boolean bool(JWTClaimsSet jwt, String key) {
+        try {
+            Boolean v = jwt.getBooleanClaim(key);
+            return Boolean.TRUE.equals(v);
+        } catch (ParseException e) {
+            return false;
+        }
     }
 
-    private static List<String> strList(DecodedJWT jwt, String key) {
-        Claim c = jwt.getClaim(key);
-        if (c.isMissing()) return Collections.emptyList();
-        List<String> list = c.asList(String.class);
-        return list != null ? Collections.unmodifiableList(list) : Collections.emptyList();
+    private static List<String> strList(JWTClaimsSet jwt, String key) {
+        try {
+            List<String> v = jwt.getStringListClaim(key);
+            return v != null ? Collections.unmodifiableList(v) : Collections.emptyList();
+        } catch (ParseException e) {
+            return Collections.emptyList();
+        }
     }
 }

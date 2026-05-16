@@ -1,7 +1,6 @@
 package com.quefly.authfi;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -10,7 +9,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** HTTP client for AuthFI API calls. */
 public class HttpTransport {
@@ -19,9 +21,12 @@ public class HttpTransport {
     private final HttpClient client;
     private final Gson gson = new Gson();
 
-    // Cached service token
     private volatile String cachedToken;
     private volatile long tokenExpiry;
+
+    private volatile String cachedAgentToken;
+    private volatile long agentTokenExpiry;
+    private volatile Set<String> cachedAgentCapabilities = Collections.emptySet();
 
     public HttpTransport(AuthFIConfig config) {
         this.config = config;
@@ -30,32 +35,83 @@ public class HttpTransport {
             .build();
     }
 
-    /** GET request to management API. */
+    // === Management API — service auth (X-API-Key or client_credentials Bearer) ===
+
     public String get(String path) {
-        return request("GET", path, null);
+        return manageRequest("GET", path, null);
     }
 
-    /** POST request to management API. */
     public String post(String path, Object body) {
-        return request("POST", path, body);
+        return manageRequest("POST", path, body);
     }
 
-    /** PUT request to management API. */
     public String put(String path, Object body) {
-        return request("PUT", path, body);
+        return manageRequest("PUT", path, body);
     }
 
-    /** DELETE request to management API. */
     public String delete(String path) {
-        return request("DELETE", path, null);
+        return manageRequest("DELETE", path, null);
     }
 
-    /** PATCH request to management API. */
     public String patch(String path, Object body) {
-        return request("PATCH", path, body);
+        return manageRequest("PATCH", path, body);
     }
 
-    /** OAuth2 client_credentials token. */
+    // === End-user-context — caller passes the user's access token ===
+
+    public String getAsUser(String userToken, String path) {
+        return userRequest("GET", userToken, path, null);
+    }
+
+    public String postAsUser(String userToken, String path, Object body) {
+        return userRequest("POST", userToken, path, body);
+    }
+
+    public String deleteAsUser(String userToken, String path) {
+        return userRequest("DELETE", userToken, path, null);
+    }
+
+    // === Agent-context — uses cached agent token from /v1/{tenant}/agents/token ===
+
+    public String getAsAgent(String path) {
+        return agentRequest("GET", path, null);
+    }
+
+    public String postAsAgent(String path, Object body) {
+        return agentRequest("POST", path, body);
+    }
+
+    // === Anonymous — no auth header ===
+
+    public String getAnonymous(String absoluteUrl) {
+        var req = HttpRequest.newBuilder()
+            .uri(URI.create(absoluteUrl))
+            .GET()
+            .build();
+        return send(req, "GET " + absoluteUrl);
+    }
+
+    public String formPostAnonymous(String absoluteUrl, Map<String, String> formParams) {
+        StringBuilder body = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, String> e : formParams.entrySet()) {
+            if (e.getValue() == null) continue;
+            if (!first) body.append('&');
+            body.append(URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8))
+                .append('=')
+                .append(URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8));
+            first = false;
+        }
+        var req = HttpRequest.newBuilder()
+            .uri(URI.create(absoluteUrl))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+            .build();
+        return send(req, "POST " + absoluteUrl);
+    }
+
+    // === OAuth2 — customer service identity (/v1/{tenant}/oauth/token) ===
+
     public String clientCredentialsToken(String... scopes) {
         if (cachedToken != null && System.currentTimeMillis() / 1000 < tokenExpiry - 60) {
             return cachedToken;
@@ -93,7 +149,6 @@ public class HttpTransport {
         }
     }
 
-    /** OAuth2 token exchange (on-behalf-of). */
     public String tokenExchange(String subjectToken, String... scopes) {
         String body = "grant_type=urn:ietf:params:oauth:grant-type:token-exchange"
             + "&subject_token=" + URLEncoder.encode(subjectToken, StandardCharsets.UTF_8)
@@ -126,37 +181,133 @@ public class HttpTransport {
         }
     }
 
-    // --- Internal ---
+    // === AAP — agent identity (/v1/{tenant}/agents/token) ===
 
-    private String request(String method, String path, Object body) {
+    /**
+     * Fetch (or return cached) the agent's access token via client_credentials
+     * against /v1/{tenant}/agents/token. Also populates {@link #agentCapabilities()}.
+     */
+    public String agentToken() {
+        if (cachedAgentToken != null && System.currentTimeMillis() / 1000 < agentTokenExpiry - 60) {
+            return cachedAgentToken;
+        }
+
+        if (config.agentId() == null || config.agentSecret() == null) {
+            throw new AuthFIException("agent_id and agent_secret are required for agent calls", 401);
+        }
+
+        String body = "grant_type=client_credentials"
+            + "&client_id=" + URLEncoder.encode(config.agentId(), StandardCharsets.UTF_8)
+            + "&client_secret=" + URLEncoder.encode(config.agentSecret(), StandardCharsets.UTF_8);
+
+        var req = HttpRequest.newBuilder()
+            .uri(URI.create(config.agentTokenEndpoint()))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .POST(HttpRequest.BodyPublishers.ofString(body))
+            .build();
+
+        try {
+            var res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() >= 400) {
+                throw new AuthFIException("Agent token request failed: " + res.body(), res.statusCode());
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> tokenMap = gson.fromJson(res.body(), Map.class);
+            cachedAgentToken = (String) tokenMap.get("access_token");
+            Number expiresIn = (Number) tokenMap.getOrDefault("expires_in", 3600);
+            agentTokenExpiry = System.currentTimeMillis() / 1000 + expiresIn.longValue();
+
+            Object caps = tokenMap.get("capabilities");
+            if (caps instanceof List<?> capList) {
+                cachedAgentCapabilities = Set.copyOf(
+                    capList.stream().map(Object::toString).toList()
+                );
+            }
+            return cachedAgentToken;
+        } catch (AuthFIException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AuthFIException("Agent token request failed", e);
+        }
+    }
+
+    /** Capabilities granted to this agent, populated as a side effect of {@link #agentToken()}. */
+    public Set<String> agentCapabilities() {
+        if (cachedAgentCapabilities.isEmpty() && cachedAgentToken == null) {
+            agentToken();
+        }
+        return cachedAgentCapabilities;
+    }
+
+    // === Internal ===
+
+    private String manageRequest(String method, String path, Object body) {
         String url = config.manageUrl() + path;
         var builder = HttpRequest.newBuilder().uri(URI.create(url));
 
-        // Auth header
         if (config.authMode() == AuthFIConfig.AuthMode.API_KEY) {
             builder.header("X-API-Key", config.apiKey());
-        } else {
+        } else if (config.authMode() == AuthFIConfig.AuthMode.CLIENT_CREDENTIALS) {
             builder.header("Authorization", "Bearer " + clientCredentialsToken());
+        } else {
+            throw new AuthFIException(
+                "Management API requires client or service mode (current mode: " + config.authMode() + ")",
+                403);
         }
-
         builder.header("Content-Type", "application/json");
 
-        HttpRequest.BodyPublisher bodyPublisher = body != null
+        HttpRequest.BodyPublisher publisher = body != null
             ? HttpRequest.BodyPublishers.ofString(gson.toJson(body))
             : HttpRequest.BodyPublishers.noBody();
+        builder.method(method, publisher);
 
-        builder.method(method, bodyPublisher);
+        return send(builder.build(), method + " " + url);
+    }
 
+    private String userRequest(String method, String userToken, String path, Object body) {
+        if (userToken == null || userToken.isBlank()) {
+            throw new AuthFIException("user access token is required", 401);
+        }
+        String url = config.v1Url() + path;
+        var builder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", "Bearer " + userToken)
+            .header("Content-Type", "application/json");
+
+        HttpRequest.BodyPublisher publisher = body != null
+            ? HttpRequest.BodyPublishers.ofString(gson.toJson(body))
+            : HttpRequest.BodyPublishers.noBody();
+        builder.method(method, publisher);
+
+        return send(builder.build(), method + " " + url);
+    }
+
+    private String agentRequest(String method, String path, Object body) {
+        String url = config.v1Url() + path;
+        var builder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", "Bearer " + agentToken())
+            .header("Content-Type", "application/json");
+
+        HttpRequest.BodyPublisher publisher = body != null
+            ? HttpRequest.BodyPublishers.ofString(gson.toJson(body))
+            : HttpRequest.BodyPublishers.noBody();
+        builder.method(method, publisher);
+
+        return send(builder.build(), method + " " + url);
+    }
+
+    private String send(HttpRequest req, String label) {
         try {
-            var res = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            var res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
-                throw new AuthFIException("API error: " + res.body(), res.statusCode());
+                throw new AuthFIException("API error (" + label + "): " + res.body(), res.statusCode());
             }
             return res.body();
         } catch (AuthFIException e) {
             throw e;
         } catch (Exception e) {
-            throw new AuthFIException("API request failed: " + e.getMessage(), e);
+            throw new AuthFIException("API request failed (" + label + "): " + e.getMessage(), e);
         }
     }
 }

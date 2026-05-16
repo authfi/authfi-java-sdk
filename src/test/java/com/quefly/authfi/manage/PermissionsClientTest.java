@@ -11,7 +11,7 @@ class PermissionsClientTest {
     @Test
     void registersPermissions() {
         var config = new AuthFIConfig("test", "sk_test", null, null,
-            "https://api.authfi.app", AuthFIConfig.AuthMode.API_KEY);
+            null, null, "https://api.authfi.app", AuthFIConfig.AuthMode.API_KEY);
         var http = new HttpTransport(config);
         var client = new PermissionsClient(config, http);
 
@@ -27,7 +27,7 @@ class PermissionsClientTest {
     @Test
     void syncWithEmptyPermissionsIsNoop() {
         var config = new AuthFIConfig("test", "sk_test", null, null,
-            "https://api.authfi.app", AuthFIConfig.AuthMode.API_KEY);
+            null, null, "https://api.authfi.app", AuthFIConfig.AuthMode.API_KEY);
         var http = new HttpTransport(config);
         var client = new PermissionsClient(config, http);
 

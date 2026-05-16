@@ -1,62 +1,80 @@
 package com.quefly.authfi.auth;
 
-import com.auth0.jwk.JwkProvider;
-import com.auth0.jwk.JwkProviderBuilder;
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.interfaces.DecodedJWT;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.jwk.source.JWKSource;
+import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
+import com.nimbusds.jose.proc.JWSVerificationKeySelector;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
+import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier;
+import com.nimbusds.jwt.proc.DefaultJWTProcessor;
 import com.quefly.authfi.AuthFIConfig;
 import com.quefly.authfi.AuthFIException;
 
-import java.net.URI;
-import java.security.interfaces.RSAPublicKey;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Verifies AuthFI JWTs using JWKS endpoint.
- * RS256 signature verification + issuer + expiry.
+ * RS256 signature verification + issuer + expiry, backed by Nimbus.
  */
 public class TokenVerifier {
 
     private final AuthFIConfig config;
-    private final JwkProvider jwkProvider;
+    private final ConfigurableJWTProcessor<SecurityContext> jwtProcessor;
 
     public TokenVerifier(AuthFIConfig config) {
         this.config = config;
         try {
-            this.jwkProvider = new JwkProviderBuilder(URI.create(config.jwksUrl()).toURL())
-                .cached(10, 24, TimeUnit.HOURS)
-                .rateLimited(10, 1, TimeUnit.MINUTES)
+            URL jwksUrl = new URL(config.jwksUrl());
+            JWKSource<SecurityContext> jwkSource = JWKSourceBuilder
+                .create(jwksUrl)
+                .retrying(true)
                 .build();
-        } catch (java.net.MalformedURLException e) {
+
+            JWSVerificationKeySelector<SecurityContext> keySelector =
+                new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, jwkSource);
+
+            DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
+            processor.setJWSKeySelector(keySelector);
+
+            JWTClaimsSet expected = new JWTClaimsSet.Builder()
+                .issuer(config.issuer())
+                .build();
+            Set<String> required = new HashSet<>();
+            required.add("sub");
+            required.add("exp");
+            processor.setJWTClaimsSetVerifier(
+                new DefaultJWTClaimsVerifier<>(expected, required)
+            );
+
+            this.jwtProcessor = processor;
+        } catch (MalformedURLException e) {
             throw new AuthFIException("Invalid JWKS URL: " + config.jwksUrl(), e);
         }
     }
 
     /** Verify a JWT string and return parsed claims. */
     public AuthFIClaims verify(String token) {
+        if (token == null || token.isBlank()) {
+            throw new AuthFIException("Empty token", 401);
+        }
         try {
-            DecodedJWT unverified = JWT.decode(token);
-            String kid = unverified.getKeyId();
-            if (kid == null) throw new AuthFIException("Token missing kid", 401);
-
-            RSAPublicKey publicKey = (RSAPublicKey) jwkProvider.get(kid).getPublicKey();
-
-            DecodedJWT verified = JWT.require(Algorithm.RSA256(publicKey, null))
-                .withIssuer(config.issuer())
-                .build()
-                .verify(token);
-
-            return AuthFIClaims.from(verified);
+            JWTClaimsSet claims = jwtProcessor.process(token, null);
+            return AuthFIClaims.from(claims);
         } catch (AuthFIException e) {
             throw e;
-        } catch (com.auth0.jwt.exceptions.TokenExpiredException e) {
-            throw new AuthFIException("Token expired", 401);
-        } catch (com.auth0.jwt.exceptions.JWTVerificationException e) {
+        } catch (com.nimbusds.jwt.proc.BadJWTException e) {
             throw new AuthFIException("Token verification failed: " + e.getMessage(), 401);
-        } catch (Exception e) {
-            throw new AuthFIException("Token verification failed", 401);
+        } catch (com.nimbusds.jose.proc.BadJOSEException e) {
+            throw new AuthFIException("Token verification failed: " + e.getMessage(), 401);
+        } catch (com.nimbusds.jose.JOSEException e) {
+            throw new AuthFIException("Token verification failed: " + e.getMessage(), 401);
+        } catch (java.text.ParseException e) {
+            throw new AuthFIException("Malformed token: " + e.getMessage(), 401);
         }
     }
 

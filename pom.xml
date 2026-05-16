@@ -4,11 +4,11 @@
 
     <groupId>com.quefly.authfi</groupId>
     <artifactId>authfi-sdk</artifactId>
-    <version>0.1.1</version>
+    <version>0.2.0</version>
     <packaging>jar</packaging>
 
     <name>AuthFI Java SDK</name>
-    <description>Full AuthFI SDK — auth, connect, users, orgs, permissions, workload identity</description>
+    <description>Full AuthFI SDK — auth, connect, users, orgs, permissions, sessions, MFA, audit logs, OIDC discovery</description>
     <url>https://github.com/queflyhq/authfi-java-sdk</url>
 
     <organization>
@@ -53,16 +53,11 @@
             <version>2.11.0</version>
         </dependency>
 
-        <!-- JWT / JWKS -->
+        <!-- JWT / JWKS — Nimbus replaces com.auth0:java-jwt + jwks-rsa with a single dep -->
         <dependency>
-            <groupId>com.auth0</groupId>
-            <artifactId>java-jwt</artifactId>
-            <version>4.4.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.auth0</groupId>
-            <artifactId>jwks-rsa</artifactId>
-            <version>0.22.1</version>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>10.0.1</version>
         </dependency>
 
         <!-- Test -->
@@ -97,6 +92,12 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-oauth2-resource-server</artifactId>
+            <version>6.3.0</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
             <version>6.3.0</version>
             <optional>true</optional>
         </dependency>

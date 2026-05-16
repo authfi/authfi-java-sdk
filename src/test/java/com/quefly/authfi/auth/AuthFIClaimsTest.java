@@ -1,44 +1,57 @@
 package com.quefly.authfi.auth;
 
-import com.auth0.jwt.JWT;
-import com.auth0.jwt.algorithms.Algorithm;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.Test;
 
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
-import java.time.Instant;
+import java.text.ParseException;
+import java.util.Date;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class AuthFIClaimsTest {
 
+    private static JWTClaimsSet parse(String token) throws ParseException {
+        return SignedJWT.parse(token).getJWTClaimsSet();
+    }
+
+    private static String sign(JWTClaimsSet claims) throws JOSEException {
+        RSAKey rsa = new RSAKeyGenerator(2048).keyID("test").generate();
+        SignedJWT jwt = new SignedJWT(
+            new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(rsa.getKeyID()).build(),
+            claims
+        );
+        jwt.sign(new RSASSASigner(rsa));
+        return jwt.serialize();
+    }
+
     @Test
     void parsesClaimsFromJwt() throws Exception {
-        KeyPair kp = KeyPairGenerator.getInstance("RSA").generateKeyPair();
-        Algorithm algo = Algorithm.RSA256((RSAPublicKey) kp.getPublic(), (RSAPrivateKey) kp.getPrivate());
+        String token = sign(new JWTClaimsSet.Builder()
+            .subject("usr_123")
+            .claim("email", "jane@acme.com")
+            .claim("name", "Jane Smith")
+            .claim("email_verified", true)
+            .claim("tenant_id", "tnt_456")
+            .claim("org_id", "org_789")
+            .claim("org_slug", "acme-corp")
+            .claim("org_role", "admin")
+            .claim("roles", List.of("admin", "editor"))
+            .claim("permissions", List.of("read:users", "write:users"))
+            .claim("groups", List.of("engineering"))
+            .issuer("https://acme.authfi.app")
+            .issueTime(new Date())
+            .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
+            .build());
 
-        String token = JWT.create()
-            .withSubject("usr_123")
-            .withClaim("email", "jane@acme.com")
-            .withClaim("name", "Jane Smith")
-            .withClaim("email_verified", true)
-            .withClaim("tenant_id", "tnt_456")
-            .withClaim("org_id", "org_789")
-            .withClaim("org_slug", "acme-corp")
-            .withClaim("org_role", "admin")
-            .withClaim("roles", List.of("admin", "editor"))
-            .withClaim("permissions", List.of("read:users", "write:users"))
-            .withClaim("groups", List.of("engineering"))
-            .withIssuer("https://acme.authfi.app")
-            .withIssuedAt(Instant.now())
-            .withExpiresAt(Instant.now().plusSeconds(3600))
-            .sign(algo);
-
-        var decoded = JWT.require(algo).withIssuer("https://acme.authfi.app").build().verify(token);
-        AuthFIClaims claims = AuthFIClaims.from(decoded);
+        AuthFIClaims claims = AuthFIClaims.from(parse(token));
 
         assertEquals("usr_123", claims.sub());
         assertEquals("jane@acme.com", claims.email());
@@ -56,19 +69,15 @@ class AuthFIClaimsTest {
 
     @Test
     void hasPermission() throws Exception {
-        KeyPair kp = KeyPairGenerator.getInstance("RSA").generateKeyPair();
-        Algorithm algo = Algorithm.RSA256((RSAPublicKey) kp.getPublic(), (RSAPrivateKey) kp.getPrivate());
+        String token = sign(new JWTClaimsSet.Builder()
+            .subject("usr_1")
+            .claim("permissions", List.of("read:users", "write:users"))
+            .claim("roles", List.of("admin"))
+            .issuer("https://test.authfi.app")
+            .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
+            .build());
 
-        String token = JWT.create()
-            .withSubject("usr_1")
-            .withClaim("permissions", List.of("read:users", "write:users"))
-            .withClaim("roles", List.of("admin"))
-            .withIssuer("https://test.authfi.app")
-            .withExpiresAt(Instant.now().plusSeconds(3600))
-            .sign(algo);
-
-        var decoded = JWT.require(algo).withIssuer("https://test.authfi.app").build().verify(token);
-        AuthFIClaims claims = AuthFIClaims.from(decoded);
+        AuthFIClaims claims = AuthFIClaims.from(parse(token));
 
         assertTrue(claims.hasPermission("read:users"));
         assertTrue(claims.hasPermission("write:users"));
@@ -77,18 +86,14 @@ class AuthFIClaimsTest {
 
     @Test
     void hasRole() throws Exception {
-        KeyPair kp = KeyPairGenerator.getInstance("RSA").generateKeyPair();
-        Algorithm algo = Algorithm.RSA256((RSAPublicKey) kp.getPublic(), (RSAPrivateKey) kp.getPrivate());
+        String token = sign(new JWTClaimsSet.Builder()
+            .subject("usr_1")
+            .claim("roles", List.of("admin", "editor"))
+            .issuer("https://test.authfi.app")
+            .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
+            .build());
 
-        String token = JWT.create()
-            .withSubject("usr_1")
-            .withClaim("roles", List.of("admin", "editor"))
-            .withIssuer("https://test.authfi.app")
-            .withExpiresAt(Instant.now().plusSeconds(3600))
-            .sign(algo);
-
-        var decoded = JWT.require(algo).withIssuer("https://test.authfi.app").build().verify(token);
-        AuthFIClaims claims = AuthFIClaims.from(decoded);
+        AuthFIClaims claims = AuthFIClaims.from(parse(token));
 
         assertTrue(claims.hasRole("admin"));
         assertTrue(claims.hasRole("editor"));
@@ -97,18 +102,14 @@ class AuthFIClaimsTest {
 
     @Test
     void inOrg() throws Exception {
-        KeyPair kp = KeyPairGenerator.getInstance("RSA").generateKeyPair();
-        Algorithm algo = Algorithm.RSA256((RSAPublicKey) kp.getPublic(), (RSAPrivateKey) kp.getPrivate());
+        String token = sign(new JWTClaimsSet.Builder()
+            .subject("usr_1")
+            .claim("org_slug", "acme-corp")
+            .issuer("https://test.authfi.app")
+            .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
+            .build());
 
-        String token = JWT.create()
-            .withSubject("usr_1")
-            .withClaim("org_slug", "acme-corp")
-            .withIssuer("https://test.authfi.app")
-            .withExpiresAt(Instant.now().plusSeconds(3600))
-            .sign(algo);
-
-        var decoded = JWT.require(algo).withIssuer("https://test.authfi.app").build().verify(token);
-        AuthFIClaims claims = AuthFIClaims.from(decoded);
+        AuthFIClaims claims = AuthFIClaims.from(parse(token));
 
         assertTrue(claims.inOrg("acme-corp"));
         assertFalse(claims.inOrg("other-org"));
@@ -116,17 +117,13 @@ class AuthFIClaimsTest {
 
     @Test
     void handlesEmptyClaims() throws Exception {
-        KeyPair kp = KeyPairGenerator.getInstance("RSA").generateKeyPair();
-        Algorithm algo = Algorithm.RSA256((RSAPublicKey) kp.getPublic(), (RSAPrivateKey) kp.getPrivate());
+        String token = sign(new JWTClaimsSet.Builder()
+            .subject("usr_1")
+            .issuer("https://test.authfi.app")
+            .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
+            .build());
 
-        String token = JWT.create()
-            .withSubject("usr_1")
-            .withIssuer("https://test.authfi.app")
-            .withExpiresAt(Instant.now().plusSeconds(3600))
-            .sign(algo);
-
-        var decoded = JWT.require(algo).withIssuer("https://test.authfi.app").build().verify(token);
-        AuthFIClaims claims = AuthFIClaims.from(decoded);
+        AuthFIClaims claims = AuthFIClaims.from(parse(token));
 
         assertEquals("usr_1", claims.sub());
         assertEquals("", claims.email());
