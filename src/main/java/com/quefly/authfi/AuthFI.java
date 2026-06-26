@@ -261,7 +261,7 @@ public class AuthFI {
         private String apiKey;
         private String clientId;
         private String clientSecret;
-        private String baseUrl = "https://api.authfi.app";
+        private String baseUrl = "https://api.authfi.io";
 
         Builder(AuthFIConfig.AuthMode authMode) {
             this.authMode = authMode;
@@ -294,7 +294,7 @@ public class AuthFI {
         private String tenant;
         private String agentId;
         private String agentSecret;
-        private String baseUrl = "https://api.authfi.app";
+        private String baseUrl = "https://api.authfi.io";
 
         public AgentBuilder tenant(String tenant) { this.tenant = tenant; return this; }
         public AgentBuilder agentId(String agentId) { this.agentId = agentId; return this; }

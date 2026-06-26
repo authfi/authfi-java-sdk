@@ -34,7 +34,7 @@ public class AuthFIProperties {
     private String apiKey;
     private String clientId;
     private String clientSecret;
-    private String baseUrl = "https://api.authfi.app";
+    private String baseUrl = "https://api.authfi.io";
     private Agent agent = new Agent();
     private PermissionSync permissionSync = new PermissionSync();
 

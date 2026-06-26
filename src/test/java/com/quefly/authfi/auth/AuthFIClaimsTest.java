@@ -46,7 +46,7 @@ class AuthFIClaimsTest {
             .claim("roles", List.of("admin", "editor"))
             .claim("permissions", List.of("read:users", "write:users"))
             .claim("groups", List.of("engineering"))
-            .issuer("https://acme.authfi.app")
+            .issuer("https://acme.authfi.io")
             .issueTime(new Date())
             .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
             .build());
@@ -64,7 +64,7 @@ class AuthFIClaimsTest {
         assertEquals(List.of("admin", "editor"), claims.roles());
         assertEquals(List.of("read:users", "write:users"), claims.permissions());
         assertEquals(List.of("engineering"), claims.groups());
-        assertEquals("https://acme.authfi.app", claims.issuer());
+        assertEquals("https://acme.authfi.io", claims.issuer());
     }
 
     @Test
@@ -73,7 +73,7 @@ class AuthFIClaimsTest {
             .subject("usr_1")
             .claim("permissions", List.of("read:users", "write:users"))
             .claim("roles", List.of("admin"))
-            .issuer("https://test.authfi.app")
+            .issuer("https://test.authfi.io")
             .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
             .build());
 
@@ -89,7 +89,7 @@ class AuthFIClaimsTest {
         String token = sign(new JWTClaimsSet.Builder()
             .subject("usr_1")
             .claim("roles", List.of("admin", "editor"))
-            .issuer("https://test.authfi.app")
+            .issuer("https://test.authfi.io")
             .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
             .build());
 
@@ -105,7 +105,7 @@ class AuthFIClaimsTest {
         String token = sign(new JWTClaimsSet.Builder()
             .subject("usr_1")
             .claim("org_slug", "acme-corp")
-            .issuer("https://test.authfi.app")
+            .issuer("https://test.authfi.io")
             .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
             .build());
 
@@ -119,7 +119,7 @@ class AuthFIClaimsTest {
     void handlesEmptyClaims() throws Exception {
         String token = sign(new JWTClaimsSet.Builder()
             .subject("usr_1")
-            .issuer("https://test.authfi.app")
+            .issuer("https://test.authfi.io")
             .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
             .build());
 

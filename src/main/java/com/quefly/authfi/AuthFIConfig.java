@@ -22,12 +22,12 @@ public record AuthFIConfig(
 
     /** JWKS URL for this tenant. */
     public String jwksUrl() {
-        return "https://" + tenant + ".authfi.app/.well-known/jwks.json";
+        return "https://" + tenant + ".authfi.io/.well-known/jwks.json";
     }
 
     /** Issuer URL (the subdomain base used for OIDC discovery). */
     public String issuer() {
-        return "https://" + tenant + ".authfi.app";
+        return "https://" + tenant + ".authfi.io";
     }
 
     /** Management API base — service-credentialed routes. */

@@ -6,7 +6,7 @@ import com.quefly.authfi.HttpTransport;
 
 /**
  * Public .well-known discovery — OIDC, JWKS, SMART on FHIR, AuthFI Agent Protocol.
- * Served from the tenant subdomain ({@code https://{tenant}.authfi.app}).
+ * Served from the tenant subdomain ({@code https://{tenant}.authfi.io}).
  */
 public class DiscoveryClient {
 

@@ -73,10 +73,10 @@ class AgentBuilderTest {
             .tenant("acme")
             .agentId("agt_x")
             .agentSecret("ags_y")
-            .baseUrl("https://api.authfi.app")
+            .baseUrl("https://api.authfi.io")
             .build();
 
-        assertEquals("https://api.authfi.app/v1/acme/agents/token",
+        assertEquals("https://api.authfi.io/v1/acme/agents/token",
             agent.getConfig().agentTokenEndpoint());
     }
 }

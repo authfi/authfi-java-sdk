@@ -20,7 +20,7 @@ class TokenVerifierTest {
 
     private static AuthFIConfig testConfig() {
         return new AuthFIConfig("test", "sk_test", null, null,
-            null, null, "https://api.authfi.app", AuthFIConfig.AuthMode.API_KEY);
+            null, null, "https://api.authfi.io", AuthFIConfig.AuthMode.API_KEY);
     }
 
     private static AuthFIClaims claimsFor(JWTClaimsSet set) throws Exception {
@@ -70,7 +70,7 @@ class TokenVerifierTest {
         AuthFIClaims claims = claimsFor(new JWTClaimsSet.Builder()
             .subject("usr_1")
             .claim("permissions", List.of("read:users"))
-            .issuer("https://test.authfi.app")
+            .issuer("https://test.authfi.io")
             .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
             .build());
 
@@ -88,7 +88,7 @@ class TokenVerifierTest {
         AuthFIClaims claims = claimsFor(new JWTClaimsSet.Builder()
             .subject("usr_1")
             .claim("roles", List.of("editor"))
-            .issuer("https://test.authfi.app")
+            .issuer("https://test.authfi.io")
             .expirationTime(new Date(System.currentTimeMillis() + 3_600_000))
             .build());
 

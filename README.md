@@ -1,6 +1,6 @@
 # AuthFI Java SDK
 
-Official Java SDK for [AuthFI](https://authfi.app) — the identity control plane.
+Official Java SDK for [AuthFI](https://authfi.io) — the identity control plane.
 **One artifact, one dep, three usage modes** (customer web app, customer service, AI agent process).
 
 ```xml
@@ -22,7 +22,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: https://acme.authfi.app
+          issuer-uri: https://acme.authfi.io
 ```
 
 ```java
@@ -152,8 +152,8 @@ authfi.myAgents().activity(userJwt, agentId);
 
 | If you currently use | Change |
 |---|---|
-| Okta + Spring | `issuer-uri: https://acme.okta.com` → `https://acme.authfi.app` |
-| Auth0 + Spring | `issuer-uri: https://acme.auth0.com/` → `https://acme.authfi.app` |
+| Okta + Spring | `issuer-uri: https://acme.okta.com` → `https://acme.authfi.io` |
+| Auth0 + Spring | `issuer-uri: https://acme.auth0.com/` → `https://acme.authfi.io` |
 | Cognito + Spring | same |
 
 Your `@PreAuthorize` annotations don't change.
