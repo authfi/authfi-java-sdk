@@ -76,7 +76,7 @@ class AgentBuilderTest {
             .baseUrl("https://api.authfi.io")
             .build();
 
-        assertEquals("https://api.authfi.io/v1/acme/agents/token",
+        assertEquals("https://api.authfi.io/acme/v1/agents/token",
             agent.getConfig().agentTokenEndpoint());
     }
 }

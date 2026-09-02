@@ -30,19 +30,32 @@ public record AuthFIConfig(
         return "https://" + tenant + ".authfi.io";
     }
 
+    /**
+     * The tenant's base on the shared API host.
+     *
+     * <p>The edge dispatch is {@code api.authfi.io/<slug>/<path>} — the SLUG COMES FIRST. Every
+     * builder below had the slug and the version the other way round, so every URL this SDK
+     * produced 404'd against a real deployment.
+     */
+    private String tenantBase() {
+        return baseUrl + "/" + tenant;
+    }
+
     /** Management API base — service-credentialed routes. */
     public String manageUrl() {
-        return baseUrl + "/manage/v1/" + tenant;
+        // There is no /manage/ prefix on the platform; those routes are /v1/* like the rest.
+        return tenantBase() + "/v1";
     }
 
     /** Path-based v1 base — end-user-bearer and public routes. */
     public String v1Url() {
-        return baseUrl + "/v1/" + tenant;
+        return tenantBase() + "/v1";
     }
 
     /** OAuth2 token endpoint for customer service identity. */
     public String tokenEndpoint() {
-        return v1Url() + "/oauth/token";
+        // OAuth lives at the issuer ROOT under /oauth, not beneath /v1 (URL_SCHEME.md Kind 2).
+        return tenantBase() + "/oauth/token";
     }
 
     /** Agent token endpoint (AAP — client_credentials with agent_id/agent_secret). */

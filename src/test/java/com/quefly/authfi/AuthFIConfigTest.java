@@ -23,20 +23,22 @@ class AuthFIConfigTest {
     void manageUrl() {
         var config = new AuthFIConfig("acme", "sk_test", null, null,
             null, null, "https://api.authfi.io", AuthFIConfig.AuthMode.API_KEY);
-        assertEquals("https://api.authfi.io/manage/v1/acme", config.manageUrl());
+        // The edge dispatch is /<slug>/<path> — slug FIRST — and there is no /manage/ prefix.
+        assertEquals("https://api.authfi.io/acme/v1", config.manageUrl());
     }
 
     @Test
     void tokenEndpoint() {
         var config = new AuthFIConfig("acme", "sk_test", null, null,
             null, null, "https://api.authfi.io", AuthFIConfig.AuthMode.API_KEY);
-        assertEquals("https://api.authfi.io/v1/acme/oauth/token", config.tokenEndpoint());
+        // OAuth is at the issuer root under /oauth, never beneath /v1.
+        assertEquals("https://api.authfi.io/acme/oauth/token", config.tokenEndpoint());
     }
 
     @Test
     void v1Url() {
         var config = new AuthFIConfig("acme", "sk_test", null, null,
             null, null, "https://api.authfi.io", AuthFIConfig.AuthMode.API_KEY);
-        assertEquals("https://api.authfi.io/v1/acme", config.v1Url());
+        assertEquals("https://api.authfi.io/acme/v1", config.v1Url());
     }
 }
