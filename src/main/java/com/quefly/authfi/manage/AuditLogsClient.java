@@ -5,7 +5,7 @@ import com.quefly.authfi.HttpTransport;
 
 /**
  * Tenant audit log search.
- * Backed by GET /manage/v1/{tenant}/logs. Service auth.
+ * Backed by GET /manage/{tenant}/v1/logs. Service auth.
  */
 public class AuditLogsClient {
 

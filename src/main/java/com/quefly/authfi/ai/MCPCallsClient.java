@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * Audit view of MCP tool calls.
- * Backed by /manage/v1/{tenant}/mcp/calls. Service auth.
+ * Backed by /manage/{tenant}/v1/mcp/calls. Service auth.
  */
 public class MCPCallsClient {
 

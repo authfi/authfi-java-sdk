@@ -59,7 +59,7 @@ public class AgentAuthClient {
         return capabilities().contains(action);
     }
 
-    /** POST /v1/{tenant}/agents/request-approval — submit a HIL approval request. Returns immediately (HTTP 202). */
+    /** POST /{tenant}/v1/agents/request-approval — submit a HIL approval request. Returns immediately (HTTP 202). */
     public ApprovalRequest requestApproval(String action, Map<String, Object> context) {
         requireAgentMode();
         Map<String, Object> body = new HashMap<>();
@@ -80,7 +80,7 @@ public class AgentAuthClient {
         );
     }
 
-    /** GET /v1/{tenant}/agents/approvals/{id} — single poll. Use {@link #awaitDecision} for blocking. */
+    /** GET /{tenant}/v1/agents/approvals/{id} — single poll. Use {@link #awaitDecision} for blocking. */
     public Approval checkApproval(String approvalId) {
         // Unauthenticated GET — the approval_id is the bearer of capability.
         String json = http.getAnonymous(config.v1Url() + "/agents/approvals/" + approvalId);

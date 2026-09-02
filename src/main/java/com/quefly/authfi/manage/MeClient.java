@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * Current-user endpoints. Caller passes the end-user's access token.
- * Backed by /v1/{tenant}/me/* in authfi-auth-service.
+ * Backed by /{tenant}/v1/me/* in authfi-auth-service.
  */
 public class MeClient {
 

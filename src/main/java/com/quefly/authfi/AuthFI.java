@@ -181,7 +181,7 @@ public class AuthFI {
         return discoveryClient;
     }
 
-    /** Owner-driven agent registration (POST /v1/{tenant}/agents/register, requires user JWT). */
+    /** Owner-driven agent registration (POST /{tenant}/v1/agents/register, requires user JWT). */
     public AgentsClient agents() {
         if (agentsClient == null) synchronized (this) {
             if (agentsClient == null) agentsClient = new AgentsClient(config, http);

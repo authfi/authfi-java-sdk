@@ -16,7 +16,7 @@ public record AuthFIConfig(
         API_KEY,
         /** OAuth2 client_credentials grant (customer service identity). */
         CLIENT_CREDENTIALS,
-        /** OAuth2 client_credentials grant against /v1/{tenant}/agents/token (agent identity). */
+        /** OAuth2 client_credentials grant against /{tenant}/v1/agents/token (agent identity). */
         AGENT_CREDENTIALS
     }
 

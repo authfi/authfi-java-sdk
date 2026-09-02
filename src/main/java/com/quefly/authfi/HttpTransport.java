@@ -71,7 +71,7 @@ public class HttpTransport {
         return userRequest("DELETE", userToken, path, null);
     }
 
-    // === Agent-context — uses cached agent token from /v1/{tenant}/agents/token ===
+    // === Agent-context — uses cached agent token from /{tenant}/v1/agents/token ===
 
     public String getAsAgent(String path) {
         return agentRequest("GET", path, null);
@@ -110,7 +110,7 @@ public class HttpTransport {
         return send(req, "POST " + absoluteUrl);
     }
 
-    // === OAuth2 — customer service identity (/v1/{tenant}/oauth/token) ===
+    // === OAuth2 — customer service identity (/{tenant}/v1/oauth/token) ===
 
     public String clientCredentialsToken(String... scopes) {
         if (cachedToken != null && System.currentTimeMillis() / 1000 < tokenExpiry - 60) {
@@ -181,11 +181,11 @@ public class HttpTransport {
         }
     }
 
-    // === AAP — agent identity (/v1/{tenant}/agents/token) ===
+    // === AAP — agent identity (/{tenant}/v1/agents/token) ===
 
     /**
      * Fetch (or return cached) the agent's access token via client_credentials
-     * against /v1/{tenant}/agents/token. Also populates {@link #agentCapabilities()}.
+     * against /{tenant}/v1/agents/token. Also populates {@link #agentCapabilities()}.
      */
     public String agentToken() {
         if (cachedAgentToken != null && System.currentTimeMillis() / 1000 < agentTokenExpiry - 60) {

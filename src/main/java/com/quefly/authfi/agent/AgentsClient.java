@@ -28,7 +28,7 @@ public class AgentsClient {
         this.http = http;
     }
 
-    /** POST /v1/{tenant}/agents/register — owner registers an agent. */
+    /** POST /{tenant}/v1/agents/register — owner registers an agent. */
     public AgentCredentials register(String userToken, String name, String description, AgentType type) {
         Map<String, Object> body = new HashMap<>();
         body.put("name", name);

@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * End-user portal for managing the agents one has authorized to act on one's behalf.
- * Backed by /v1/{tenant}/me/agents/* — all routes take the user's Bearer token.
+ * Backed by /{tenant}/v1/me/agents/* — all routes take the user's Bearer token.
  */
 public class MyAgentsClient {
 

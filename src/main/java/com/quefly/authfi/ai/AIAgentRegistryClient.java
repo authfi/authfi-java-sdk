@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * Admin CRUD for the AI agent identity registry.
- * Backed by /manage/v1/{tenant}/ai/agent-registry. Service auth.
+ * Backed by /manage/{tenant}/v1/ai/agent-registry. Service auth.
  */
 public class AIAgentRegistryClient {
 

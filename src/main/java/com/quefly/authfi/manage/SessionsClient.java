@@ -6,7 +6,7 @@ import com.quefly.authfi.HttpTransport;
 /**
  * Session lifecycle — both end-user self-service and admin per-user views.
  * Self-service routes ({@code /sessions/*}) take the user's Bearer token;
- * admin routes ({@code /manage/v1/{tenant}/users/{id}/sessions}) use service auth.
+ * admin routes ({@code /manage/{tenant}/v1/users/{id}/sessions}) use service auth.
  */
 public class SessionsClient {
 
@@ -35,12 +35,12 @@ public class SessionsClient {
 
     // --- admin per-user ---
 
-    /** GET /manage/v1/{tenant}/users/{id}/sessions. */
+    /** GET /manage/{tenant}/v1/users/{id}/sessions. */
     public String listForUser(String userId) {
         return http.get("/users/" + userId + "/sessions");
     }
 
-    /** POST /manage/v1/{tenant}/users/{id}/sessions/revoke. */
+    /** POST /manage/{tenant}/v1/users/{id}/sessions/revoke. */
     public String revokeAllForUser(String userId) {
         return http.post("/users/" + userId + "/sessions/revoke", java.util.Map.of());
     }

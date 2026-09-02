@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * Admin view of AI run lifecycle — create, list, taint, restore, revoke.
- * Backed by /manage/v1/{tenant}/ai/runs. Service auth.
+ * Backed by /manage/{tenant}/v1/ai/runs. Service auth.
  */
 public class AIRunsClient {
 

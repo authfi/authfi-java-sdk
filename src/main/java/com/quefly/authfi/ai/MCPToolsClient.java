@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * MCP tool catalog — the registry of tools an agent may invoke.
- * Backed by /manage/v1/{tenant}/mcp/tools. Service auth.
+ * Backed by /manage/{tenant}/v1/mcp/tools. Service auth.
  */
 public class MCPToolsClient {
 
