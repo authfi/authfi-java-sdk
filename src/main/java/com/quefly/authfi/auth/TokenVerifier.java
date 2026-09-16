@@ -1,8 +1,10 @@
 package com.quefly.authfi.auth;
 
+import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
+import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -27,31 +29,43 @@ public class TokenVerifier {
     private final ConfigurableJWTProcessor<SecurityContext> jwtProcessor;
 
     public TokenVerifier(AuthFIConfig config) {
+        this(config, remoteKeys(config));
+    }
+
+    /** Verifies against the given keys instead of the tenant's JWKS endpoint. */
+    TokenVerifier(AuthFIConfig config, JWKSource<SecurityContext> jwkSource) {
         this.config = config;
+
+        JWSVerificationKeySelector<SecurityContext> keySelector =
+            new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, jwkSource);
+
+        DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
+        processor.setJWSKeySelector(keySelector);
+        // Access tokens carry RFC 9068's "at+jwt"; ID tokens carry "JWT" or omit typ. Nimbus's
+        // default admits only the latter, so every access token was refused. Other types signed
+        // by the same key (transaction and security event tokens) stay refused.
+        processor.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(
+            new JOSEObjectType("at+jwt"), JOSEObjectType.JWT, null));
+
+        JWTClaimsSet expected = new JWTClaimsSet.Builder()
+            .issuer(config.issuer())
+            .build();
+        Set<String> required = new HashSet<>();
+        required.add("sub");
+        required.add("exp");
+        processor.setJWTClaimsSetVerifier(
+            new DefaultJWTClaimsVerifier<>(expected, required)
+        );
+
+        this.jwtProcessor = processor;
+    }
+
+    private static JWKSource<SecurityContext> remoteKeys(AuthFIConfig config) {
         try {
-            URL jwksUrl = new URL(config.jwksUrl());
-            JWKSource<SecurityContext> jwkSource = JWKSourceBuilder
-                .create(jwksUrl)
+            return JWKSourceBuilder
+                .create(new URL(config.jwksUrl()))
                 .retrying(true)
                 .build();
-
-            JWSVerificationKeySelector<SecurityContext> keySelector =
-                new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, jwkSource);
-
-            DefaultJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
-            processor.setJWSKeySelector(keySelector);
-
-            JWTClaimsSet expected = new JWTClaimsSet.Builder()
-                .issuer(config.issuer())
-                .build();
-            Set<String> required = new HashSet<>();
-            required.add("sub");
-            required.add("exp");
-            processor.setJWTClaimsSetVerifier(
-                new DefaultJWTClaimsVerifier<>(expected, required)
-            );
-
-            this.jwtProcessor = processor;
         } catch (MalformedURLException e) {
             throw new AuthFIException("Invalid JWKS URL: " + config.jwksUrl(), e);
         }
