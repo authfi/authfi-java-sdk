@@ -1,0 +1,31 @@
+package io.authfi.ai;
+
+import io.authfi.AuthFIConfig;
+import io.authfi.HttpTransport;
+
+import java.util.Map;
+
+/**
+ * Audit view of MCP tool calls.
+ * Backed by /manage/{tenant}/v1/mcp/calls. Service auth.
+ */
+public class MCPCallsClient {
+
+    private final HttpTransport http;
+
+    public MCPCallsClient(AuthFIConfig config, HttpTransport http) {
+        this.http = http;
+    }
+
+    public String list() {
+        return http.get("/mcp/calls");
+    }
+
+    public String get(String callId) {
+        return http.get("/mcp/calls/" + callId);
+    }
+
+    public String update(String callId, Map<String, Object> patch) {
+        return http.patch("/mcp/calls/" + callId, patch);
+    }
+}

@@ -5,7 +5,7 @@ Official Java SDK for [AuthFI](https://authfi.io) — the identity control plane
 
 ```xml
 <dependency>
-    <groupId>com.quefly.authfi</groupId>
+    <groupId>io.authfi</groupId>
     <artifactId>authfi-sdk</artifactId>
     <version>0.2.0</version>
 </dependency>
@@ -199,7 +199,7 @@ mvn test
 ## What's NOT in v0.2.0
 
 - **Spring AI advisor** for auto-gating `@Tool` calls with HIL approval — deferred to v0.2.1 (Spring AI 1.x dep version validation). The seamless `agent.guard(...)` API above is available from any Spring AI app today; the advisor would just wire it automatically.
-- **InvitationsClient** is shipped but the backend routes are not yet wired (see [#TBD](https://github.com/queflyhq/authfi-auth-service/issues)). The client class is callable; calls return 404 until the routes ship.
+- **InvitationsClient** is shipped but the backend routes are not yet wired (see [#TBD](https://github.com/authfi/authfi-auth-service/issues)). The client class is callable; calls return 404 until the routes ship.
 
 ## License
 

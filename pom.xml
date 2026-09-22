@@ -2,14 +2,14 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.quefly.authfi</groupId>
+    <groupId>io.authfi</groupId>
     <artifactId>authfi-sdk</artifactId>
     <version>0.2.0</version>
     <packaging>jar</packaging>
 
     <name>AuthFI Java SDK</name>
     <description>Full AuthFI SDK — auth, connect, users, orgs, permissions, sessions, MFA, audit logs, OIDC discovery</description>
-    <url>https://github.com/queflyhq/authfi-java-sdk</url>
+    <url>https://github.com/authfi/authfi-java-sdk</url>
 
     <organization>
         <name>Quefly</name>
@@ -24,9 +24,9 @@
     </licenses>
 
     <scm>
-        <url>https://github.com/queflyhq/authfi-java-sdk</url>
-        <connection>scm:git:git://github.com/queflyhq/authfi-java-sdk.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/queflyhq/authfi-java-sdk.git</developerConnection>
+        <url>https://github.com/authfi/authfi-java-sdk</url>
+        <connection>scm:git:git://github.com/authfi/authfi-java-sdk.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/authfi/authfi-java-sdk.git</developerConnection>
     </scm>
 
     <developers>
