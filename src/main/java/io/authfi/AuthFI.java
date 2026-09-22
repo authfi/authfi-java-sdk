@@ -294,6 +294,8 @@ public class AuthFI {
         private String tenant;
         private String agentId;
         private String agentSecret;
+        private String agentPrivateKey;
+        private String agentKeyId;
         private String baseUrl = "https://api.authfi.io";
 
         public AgentBuilder tenant(String tenant) { this.tenant = tenant; return this; }
@@ -301,16 +303,36 @@ public class AuthFI {
         public AgentBuilder agentSecret(String agentSecret) { this.agentSecret = agentSecret; return this; }
         public AgentBuilder baseUrl(String baseUrl) { this.baseUrl = baseUrl; return this; }
 
+        /** The agent's Ed25519 private key, PKCS#8 PEM. Enables private_key_jwt. */
+        public AgentBuilder agentPrivateKey(String pem) { this.agentPrivateKey = pem; return this; }
+
+        /** The kid registered with the public JWK. Required with {@link #agentPrivateKey}. */
+        public AgentBuilder agentKeyId(String kid) { this.agentKeyId = kid; return this; }
+
         /** Populate tenant, agentId, agentSecret, and optional baseUrl from environment variables. */
         public AgentBuilder fromEnv() {
             String t = System.getenv("AUTHFI_TENANT");
             String id = System.getenv("AUTHFI_AGENT_ID");
             String secret = System.getenv("AUTHFI_AGENT_SECRET");
             String base = System.getenv("AUTHFI_BASE_URL");
+            // The key may be supplied inline or by path. A path is the safer habit for a private
+            // key — an env var holding one leaks into `ps`, crash dumps and child processes.
+            String key = System.getenv("AUTHFI_AGENT_PRIVATE_KEY");
+            String keyFile = System.getenv("AUTHFI_AGENT_PRIVATE_KEY_FILE");
+            String kid = System.getenv("AUTHFI_AGENT_KEY_ID");
             if (t != null) this.tenant = t;
             if (id != null) this.agentId = id;
             if (secret != null) this.agentSecret = secret;
             if (base != null) this.baseUrl = base;
+            if (key != null) this.agentPrivateKey = key;
+            if (keyFile != null && !keyFile.isBlank()) {
+                try {
+                    this.agentPrivateKey = java.nio.file.Files.readString(java.nio.file.Path.of(keyFile));
+                } catch (java.io.IOException e) {
+                    throw new AuthFIException("Could not read AUTHFI_AGENT_PRIVATE_KEY_FILE: " + keyFile, e);
+                }
+            }
+            if (kid != null) this.agentKeyId = kid;
             return this;
         }
 
@@ -321,12 +343,24 @@ public class AuthFI {
             if (agentId == null || agentId.isBlank()) {
                 throw new IllegalArgumentException("agentId is required (or set AUTHFI_AGENT_ID)");
             }
-            if (agentSecret == null || agentSecret.isBlank()) {
-                throw new IllegalArgumentException("agentSecret is required (or set AUTHFI_AGENT_SECRET)");
+            boolean hasKey = agentPrivateKey != null && !agentPrivateKey.isBlank()
+                && agentKeyId != null && !agentKeyId.isBlank();
+            // A key alone is not a credential — without the kid the server cannot select the
+            // verifying key, so half-configured is refused HERE rather than at the first call.
+            if (!hasKey && agentPrivateKey != null && !agentPrivateKey.isBlank()) {
+                throw new IllegalArgumentException(
+                    "agentKeyId is required with agentPrivateKey (or set AUTHFI_AGENT_KEY_ID)");
+            }
+            if (!hasKey && (agentSecret == null || agentSecret.isBlank())) {
+                throw new IllegalArgumentException(
+                    "An agent credential is required: agentPrivateKey + agentKeyId "
+                        + "(AUTHFI_AGENT_PRIVATE_KEY[_FILE] + AUTHFI_AGENT_KEY_ID), or for a legacy "
+                        + "agent agentSecret (AUTHFI_AGENT_SECRET). An agent registered with a "
+                        + "public JWK is issued no secret.");
             }
             return new AuthFI(new AuthFIConfig(
                 tenant, null, null, null,
-                agentId, agentSecret, baseUrl,
+                agentId, agentSecret, agentPrivateKey, agentKeyId, baseUrl,
                 AuthFIConfig.AuthMode.AGENT_CREDENTIALS));
         }
     }

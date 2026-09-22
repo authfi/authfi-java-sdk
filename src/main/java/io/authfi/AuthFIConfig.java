@@ -8,9 +8,36 @@ public record AuthFIConfig(
     String clientSecret,
     String agentId,
     String agentSecret,
+    /**
+     * The agent's own Ed25519 private key, PKCS#8 PEM. When present the SDK authenticates with
+     * RFC 7523 private_key_jwt and {@link #agentSecret()} is not used.
+     *
+     * <p>This is the method the platform advertises; registering an agent with a public JWK issues
+     * no secret at all, so a key-registered agent has nothing else to present.
+     */
+    String agentPrivateKey,
+    /** The {@code kid} registered alongside the public JWK. Required with {@link #agentPrivateKey()}. */
+    String agentKeyId,
     String baseUrl,
     AuthMode authMode
 ) {
+    /**
+     * The pre-key constructor, kept so existing callers still compile.
+     *
+     * <p>An agent built this way authenticates with a secret, which works only for a legacy agent
+     * whose record holds one.
+     */
+    public AuthFIConfig(String tenant, String apiKey, String clientId, String clientSecret,
+                        String agentId, String agentSecret, String baseUrl, AuthMode authMode) {
+        this(tenant, apiKey, clientId, clientSecret, agentId, agentSecret, null, null, baseUrl, authMode);
+    }
+
+    /** True when this config can authenticate an agent by signing rather than by echoing a secret. */
+    public boolean hasAgentKey() {
+        return agentPrivateKey != null && !agentPrivateKey.isBlank()
+            && agentKeyId != null && !agentKeyId.isBlank();
+    }
+
     public enum AuthMode {
         /** X-API-Key header on management calls. */
         API_KEY,

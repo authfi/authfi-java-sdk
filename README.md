@@ -78,12 +78,35 @@ AuthFI authfi = AuthFI.service()
 
 // 3. AI agent process — AuthFI Agent Protocol (AAP)
 AuthFI agent = AuthFI.agent().fromEnv().build();
-// reads AUTHFI_TENANT / AUTHFI_AGENT_ID / AUTHFI_AGENT_SECRET
+// reads AUTHFI_TENANT / AUTHFI_AGENT_ID
+//     + AUTHFI_AGENT_PRIVATE_KEY_FILE (or _PRIVATE_KEY) and AUTHFI_AGENT_KEY_ID
+//     legacy: AUTHFI_AGENT_SECRET
 ```
 
 ## Agentic — the AuthFI Agent Protocol (AAP)
 
 Three phases. Owner registers, agent runs, gated actions wait for human approval.
+
+### How the agent authenticates
+
+**The agent holds its own Ed25519 keypair and proves possession by signing a short assertion**
+(RFC 7523 §2.2 `private_key_jwt`). The private half never leaves the process and is never sent to
+AuthFI.
+
+This is the only method the platform advertises — its discovery document
+(`/.well-known/agent-configuration`) lists
+`"token_endpoint_auth_methods_supported": ["private_key_jwt"]` and nothing else. **Registering an
+agent with a public JWK issues no client secret at all**, and the server picks the credential from
+the agent's stored record rather than from the request, so a key-registered agent cannot fall back
+to a secret. A downgrade no caller can ask for is a downgrade no attacker can force.
+
+Generate a key:
+
+```sh
+openssl genpkey -algorithm ed25519 -out agent.key
+openssl pkey -in agent.key -pubout -outform DER | tail -c 32 | basenc --base64url | tr -d '='
+# register that 32-byte value as the JWK "x", with a kid you choose
+```
 
 ### Phase 1 — owner registers the agent (one-time)
 
@@ -95,7 +118,7 @@ AgentCredentials creds = authfi.agents().register(
     "Inbox triage bot",
     "Summarizes new mail every 5min",
     AgentType.DELEGATED);
-// creds.agentId(), creds.clientSecret() — shown ONCE, persist securely
+// creds.agentId() — keep it. clientSecret() is empty for a key-registered agent.
 ```
 
 ### Phase 2 — agent process bootstraps and runs
@@ -103,7 +126,16 @@ AgentCredentials creds = authfi.agents().register(
 The agent process embeds the SDK with its own identity. The token cache + auto-refresh is invisible to caller code:
 
 ```java
-AuthFI agent = AuthFI.agent().fromEnv().build();
+// Key-based (what the platform expects)
+AuthFI agent = AuthFI.agent()
+    .tenant("acme")
+    .agentId("agt_...")
+    .agentPrivateKey(Files.readString(Path.of("/run/secrets/agent.key")))
+    .agentKeyId("key-1")
+    .build();
+
+// or entirely from the environment
+AuthFI fromEnv = AuthFI.agent().fromEnv().build();
 
 // Capability check — no JWT decoding
 if (!agent.agentAuth().can("summarize_email")) return;

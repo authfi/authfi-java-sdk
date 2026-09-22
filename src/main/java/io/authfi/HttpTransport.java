@@ -1,6 +1,7 @@
 package io.authfi;
 
 import com.google.gson.Gson;
+import io.authfi.agent.ClientAssertion;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -192,13 +193,31 @@ public class HttpTransport {
             return cachedAgentToken;
         }
 
-        if (config.agentId() == null || config.agentSecret() == null) {
-            throw new AuthFIException("agent_id and agent_secret are required for agent calls", 401);
+        if (config.agentId() == null) {
+            throw new AuthFIException("agent_id is required for agent calls", 401);
+        }
+        if (!config.hasAgentKey() && config.agentSecret() == null) {
+            throw new AuthFIException(
+                "An agent needs a credential: either an Ed25519 private key + key id "
+                    + "(private_key_jwt, what the platform advertises) or, for a legacy agent, a secret. "
+                    + "An agent registered with a public JWK is issued no secret.", 401);
         }
 
         String body = "grant_type=client_credentials"
-            + "&client_id=" + URLEncoder.encode(config.agentId(), StandardCharsets.UTF_8)
-            + "&client_secret=" + URLEncoder.encode(config.agentSecret(), StandardCharsets.UTF_8);
+            + "&client_id=" + URLEncoder.encode(config.agentId(), StandardCharsets.UTF_8);
+
+        if (config.hasAgentKey()) {
+            // private_key_jwt. The audience is the token endpoint: the server checks it, so an
+            // assertion signed for this endpoint cannot be replayed at another one.
+            String assertion = ClientAssertion.build(
+                config.agentId(), config.agentTokenEndpoint(), config.agentKeyId(), config.agentPrivateKey());
+            body += "&client_assertion_type=" + URLEncoder.encode(ClientAssertion.TYPE, StandardCharsets.UTF_8)
+                + "&client_assertion=" + URLEncoder.encode(assertion, StandardCharsets.UTF_8);
+        } else {
+            // Legacy. The agent's stored RECORD decides which credential is acceptable, so this
+            // succeeds only for an agent that was registered without a key.
+            body += "&client_secret=" + URLEncoder.encode(config.agentSecret(), StandardCharsets.UTF_8);
+        }
 
         var req = HttpRequest.newBuilder()
             .uri(URI.create(config.agentTokenEndpoint()))
