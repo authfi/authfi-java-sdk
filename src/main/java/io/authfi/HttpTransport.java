@@ -1,6 +1,7 @@
 package io.authfi;
 
 import com.google.gson.Gson;
+import io.authfi.agent.AgentDiscovery;
 import io.authfi.agent.ClientAssertion;
 
 import java.net.URI;
@@ -28,6 +29,8 @@ public class HttpTransport {
     private volatile String cachedAgentToken;
     private volatile long agentTokenExpiry;
     private volatile Set<String> cachedAgentCapabilities = Collections.emptySet();
+    /** The discovery document, read once. See AgentDiscovery for why this is not constructed. */
+    private volatile AgentDiscovery discovery;
 
     public HttpTransport(AuthFIConfig config) {
         this.config = config;
@@ -209,8 +212,10 @@ public class HttpTransport {
         if (config.hasAgentKey()) {
             // private_key_jwt. The audience is the token endpoint: the server checks it, so an
             // assertion signed for this endpoint cannot be replayed at another one.
+            // The audience is the endpoint we are actually posting to — the server checks it, so a
+            // constructed URL here would sign for somewhere the request never goes.
             String assertion = ClientAssertion.build(
-                config.agentId(), config.agentTokenEndpoint(), config.agentKeyId(), config.agentPrivateKey());
+                config.agentId(), agentTokenUrl(), config.agentKeyId(), config.agentPrivateKey());
             body += "&client_assertion_type=" + URLEncoder.encode(ClientAssertion.TYPE, StandardCharsets.UTF_8)
                 + "&client_assertion=" + URLEncoder.encode(assertion, StandardCharsets.UTF_8);
         } else {
@@ -220,7 +225,7 @@ public class HttpTransport {
         }
 
         var req = HttpRequest.newBuilder()
-            .uri(URI.create(config.agentTokenEndpoint()))
+            .uri(URI.create(agentTokenUrl()))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .POST(HttpRequest.BodyPublishers.ofString(body))
             .build();
@@ -248,6 +253,31 @@ public class HttpTransport {
         } catch (Exception e) {
             throw new AuthFIException("Agent token request failed", e);
         }
+    }
+
+    /**
+     * The agent token endpoint, from the platform's own discovery document.
+     *
+     * 0.3.0 built this URL by hand and it resolved to a 404 — the agent surface is not where a
+     * tenant-and-version concatenation puts it. The document is the authority; `agentTokenEndpoint()`
+     * on the config survives only as the last resort when discovery cannot be reached at all, so a
+     * self-hosted deployment without the well-known path is not left with nothing.
+     */
+    public String agentTokenUrl() {
+        AgentDiscovery d = discovery;
+        if (d == null) {
+            synchronized (this) {
+                if (discovery == null) discovery = AgentDiscovery.fetch(client, config.issuer());
+                d = discovery;
+            }
+        }
+        return d.tokenEndpoint();
+    }
+
+    /** The discovery document this client is using, fetching it if it has not been read yet. */
+    public AgentDiscovery agentDiscovery() {
+        agentTokenUrl();
+        return discovery;
     }
 
     /** Capabilities granted to this agent, populated as a side effect of {@link #agentToken()}. */
