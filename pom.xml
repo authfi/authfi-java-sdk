@@ -31,11 +31,10 @@
 
     <developers>
         <developer>
-            <id>piyush</id>
-            <name>Piyush Mohanty</name>
-            <email>mohanty@quefly.com</email>
-            <organization>Quefly</organization>
-            <organizationUrl>https://quefly.com</organizationUrl>
+            <id>authfi</id>
+            <name>AuthFI</name>
+            <organization>AuthFI</organization>
+            <organizationUrl>https://authfi.io</organizationUrl>
         </developer>
     </developers>
 
