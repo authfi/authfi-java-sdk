@@ -76,14 +76,14 @@ AuthFI authfi = AuthFI.service()
     .clientSecret("FIS-xyz...")
     .build();
 
-// 3. AI agent process — AuthFI Agent Protocol (AAP)
+// 3. AI agent process — AuthFI Agent Profile
 AuthFI agent = AuthFI.agent().fromEnv().build();
 // reads AUTHFI_TENANT / AUTHFI_AGENT_ID
 //     + AUTHFI_AGENT_PRIVATE_KEY_FILE (or _PRIVATE_KEY) and AUTHFI_AGENT_KEY_ID
 //     legacy: AUTHFI_AGENT_SECRET
 ```
 
-## Agentic — the AuthFI Agent Protocol (AAP)
+## Agentic — the AuthFI Agent Profile
 
 Three phases. Owner registers, agent runs, gated actions wait for human approval.
 
@@ -208,7 +208,7 @@ Your `@PreAuthorize` annotations don't change.
 | `authfi.connect()`       | Cloud credentials — GCP, AWS, Azure, OCI                         | API key / service        |
 | `authfi.agents()`        | Owner-driven agent registration (Phase 1)                         | end-user JWT             |
 | `authfi.myAgents()`      | End-user portal for managing one's agents (Phase 4)               | end-user JWT             |
-| `authfi.agentAuth()`     | AAP — token, request-approval, guard, can (Phase 2 & 3)           | agent_credentials        |
+| `authfi.agentAuth()`     | AuthFI Agent Profile — token, request-approval, guard, can (Phase 2 & 3)           | agent_credentials        |
 | `authfi.aiAgentRegistry()` | Admin: AI agent identity registry CRUD                          | API key / service        |
 | `authfi.aiRuns()`        | Admin: AI run lifecycle (+ taint / restore / revoke)              | API key / service        |
 | `authfi.mcpTools()`      | Admin: MCP tool catalog                                           | API key / service        |

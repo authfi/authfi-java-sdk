@@ -15,7 +15,7 @@ package io.authfi.spring;
  *   client-id: FIC-abc123
  *   client-secret: FIS-xyz...
  *
- * # OR agent-process — AAP (the AuthFI bean becomes agent-mode)
+ * # OR agent-process — AuthFI Agent Profile (the AuthFI bean becomes agent-mode)
  * authfi:
  *   tenant: acme
  *   agent:

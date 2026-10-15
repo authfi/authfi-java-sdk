@@ -34,7 +34,7 @@ import io.authfi.token.TokenIntrospectionClient;
  *     .clientSecret("FIS-xyz...")
  *     .build();
  *
- * // Agent process (AAP — agent acts on its own behalf, owner pre-registered it)
+ * // Agent process (AuthFI Agent Profile — agent acts on its own behalf, owner pre-registered it)
  * AuthFI agent = AuthFI.agent().fromEnv().build();
  * </pre>
  */
@@ -197,7 +197,7 @@ public class AuthFI {
         return myAgentsClient;
     }
 
-    /** AAP — agent self-service: token, request-approval, poll. Only valid in AGENT_CREDENTIALS mode. */
+    /** AuthFI Agent Profile — agent self-service: token, request-approval, poll. Only valid in AGENT_CREDENTIALS mode. */
     public AgentAuthClient agentAuth() {
         if (agentAuthClient == null) synchronized (this) {
             if (agentAuthClient == null) agentAuthClient = new AgentAuthClient(config, http);
@@ -289,7 +289,7 @@ public class AuthFI {
         }
     }
 
-    /** Builder for agent-process mode (AAP). */
+    /** Builder for agent-process mode (AuthFI Agent Profile). */
     public static class AgentBuilder {
         private String tenant;
         private String agentId;

@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The AI Agent Auth Protocol discovery document — the only authority on where the endpoints are.
+ * The AuthFI Agent Profile discovery document — the only authority on where the endpoints are.
  *
  * <p><b>Why this exists, and it is not a nicety.</b> 0.3.0 built the agent token URL by hand, as
  * {@code baseUrl + "/" + tenant + "/v1/agents/token"}. That resolves to a <b>404</b>. The platform

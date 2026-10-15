@@ -185,7 +185,7 @@ public class HttpTransport {
         }
     }
 
-    // === AAP — agent identity (/{tenant}/v1/agents/token) ===
+    // === AuthFI Agent Profile — agent identity (/{tenant}/v1/agents/token) ===
 
     /**
      * Fetch (or return cached) the agent's access token via client_credentials

@@ -5,7 +5,7 @@ import io.authfi.AuthFIException;
 import io.authfi.HttpTransport;
 
 /**
- * Public .well-known discovery — OIDC, JWKS, SMART on FHIR, AuthFI Agent Protocol.
+ * Public .well-known discovery — OIDC, JWKS, SMART on FHIR, AuthFI Agent Profile.
  * Served from the tenant subdomain ({@code https://{tenant}.authfi.io}).
  */
 public class DiscoveryClient {
@@ -41,7 +41,7 @@ public class DiscoveryClient {
         }
     }
 
-    /** GET /.well-known/agent-auth — AuthFI Agent Protocol discovery. */
+    /** GET /.well-known/agent-auth — AuthFI Agent Profile discovery. */
     public String agentAuth() {
         return http.getAnonymous(config.issuer() + "/.well-known/agent-auth");
     }
