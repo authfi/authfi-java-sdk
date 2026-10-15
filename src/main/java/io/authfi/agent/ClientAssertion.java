@@ -12,7 +12,7 @@ import java.util.Base64;
 import java.util.UUID;
 
 /**
- * RFC 7523 §2.2 {@code private_key_jwt} client authentication for an AAP agent.
+ * RFC 7523 §2.2 {@code private_key_jwt} client authentication for an AuthFI agent.
  *
  * <p>The agent holds its own Ed25519 keypair and proves possession by signing a short assertion.
  * The private half never leaves the process and is never sent to AuthFI — which is the whole point,

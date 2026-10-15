@@ -1,7 +1,7 @@
 package io.authfi.agent;
 
 /**
- * Outcome of an AAP approval — sealed so callers handle every state via one switch.
+ * Outcome of an agent approval — sealed so callers handle every state via one switch.
  *
  * <pre>
  * switch (approval) {

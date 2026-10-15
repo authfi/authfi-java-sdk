@@ -85,7 +85,7 @@ public record AuthFIConfig(
         return tenantBase() + "/oauth/token";
     }
 
-    /** Agent token endpoint (AAP — client_credentials with agent_id/agent_secret). */
+    /** Agent token endpoint (AuthFI Agent Profile — client_credentials with agent_id/agent_secret). */
     public String agentTokenEndpoint() {
         return v1Url() + "/agents/token";
     }
