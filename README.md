@@ -202,7 +202,6 @@ Your `@PreAuthorize` annotations don't change.
 | `authfi.sessions()`      | List/revoke own sessions; admin per-user views                   | mixed                    |
 | `authfi.mfa()`           | TOTP enroll/verify/list/unenroll                                  | end-user JWT             |
 | `authfi.auditLogs()`     | Audit log search (limit/offset/since)                            | API key / service        |
-| `authfi.invitations()`   | Programmatic invites — **backend not wired yet**                 | API key / service        |
 | `authfi.tokenIntrospection()` | RFC 7662 introspect + RFC 7009 revoke                       | none (public)            |
 | `authfi.discovery()`     | `.well-known/{openid-configuration, jwks, smart-configuration, agent-auth}` | none |
 | `authfi.connect()`       | Cloud credentials — GCP, AWS, Azure, OCI                         | API key / service        |
@@ -227,11 +226,6 @@ mvn test
 ```
 
 46 unit tests — all passing.
-
-## What's NOT in v0.2.0
-
-- **Spring AI advisor** for auto-gating `@Tool` calls with HIL approval — deferred to v0.2.1 (Spring AI 1.x dep version validation). The seamless `agent.guard(...)` API above is available from any Spring AI app today; the advisor would just wire it automatically.
-- **InvitationsClient** is shipped but the backend routes are not yet wired (see [#TBD](https://github.com/authfi/authfi-auth-service/issues)). The client class is callable; calls return 404 until the routes ship.
 
 ## License
 
