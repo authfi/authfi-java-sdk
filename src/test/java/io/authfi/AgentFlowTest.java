@@ -325,4 +325,28 @@ class AgentFlowTest {
         Map<String, Object> body = new Gson().fromJson(requests.get(0).substring("POST /approvals ".length()), Map.class);
         assertion((String) body.get("client_assertion"), "https://acme.authfi.io");
     }
+
+    @Test
+    void aDeniedApprovalReadsItsTimestampAndABlankIdIsRefused() throws Exception {
+        start();
+        server.createContext("/approvals/d1", ex -> answer(ex, 200,
+            "{\"status\":\"denied\",\"reason\":\"no\",\"denied_at\":99}"));
+        var http = transport();
+        var client = new AgentAuthClient(configOf(http), http);
+        var d = assertInstanceOf(Approval.Denied.class, client.checkApproval("d1"));
+        assertEquals(99L, d.deniedAtEpochSec());
+        assertEquals("no", d.reason());
+        postAnswer = "{\"data\":{\"approval_id\":\" \",\"status\":\"pending\"}}";
+        assertEquals(502, assertThrows(AuthFIException.class, () -> client.requestApproval("x", Map.of())).getStatus());
+    }
+
+    @Test
+    void loopbackHostsMayUsePlainHttpForLocalDevelopment() throws Exception {
+        for (String host : new String[]{"localhost", "127.0.0.1", "[::1]"}) {
+            serve(200, "{\"token_endpoint\":\"http://" + host + ":9/oauth/token\"}", 404, "{}");
+            assertEquals("http://" + host + ":9/oauth/token",
+                AgentDiscovery.fetch(HttpClient.newHttpClient(), base).tokenEndpoint(), host);
+            server.stop(0);
+        }
+    }
 }

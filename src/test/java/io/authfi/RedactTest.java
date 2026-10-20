@@ -103,7 +103,7 @@ class RedactTest {
             assertEquals("failed with key [redacted]\n end", out);
             assertDoesNotThrow(() -> new AuthFIException("x " + pem, 500));
         }
-        String escaped = realPem(4096).replace("\n", "\n");
+        String escaped = realPem(4096).replace("\n", "\\n");
         String outEscaped = Redact.scrub("k " + escaped);
         assertTrue(outEscaped.startsWith("k [redacted]") && !outEscaped.contains("MII"), outEscaped);
     }
@@ -135,5 +135,11 @@ class RedactTest {
         String secret = "a b/c+d";
         assertFalse(Redact.scrub("x a%20b%2Fc%2Bd y", secret).contains("%2"));
         assertFalse(Redact.scrub("x a+b%2fc%2bd y", secret).contains("%2"));
+    }
+
+    @Test
+    void aTruncatedKeyWithNoEndLineIsStillMasked() {
+        String out = Redact.scrub("key -----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC");
+        assertFalse(out.contains("MIIEv"), out);
     }
 }
