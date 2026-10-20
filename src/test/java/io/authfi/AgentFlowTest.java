@@ -172,4 +172,80 @@ class AgentFlowTest {
         f.setAccessible(true);
         return (AuthFIConfig) f.get(http);
     }
+
+    private void serve(int asStatus, String asBody, int agentStatus, String agentBody) throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        base = "http://127.0.0.1:" + server.getAddress().getPort();
+        server.createContext("/.well-known/oauth-authorization-server", ex -> answer(ex, asStatus, asBody.replace("BASE", base)));
+        server.createContext("/.well-known/agent-configuration", ex -> answer(ex, agentStatus, agentBody.replace("BASE", base)));
+        server.start();
+    }
+
+    @Test
+    void aTransientFailureOfEitherDocumentIsNotCachedAsAbsence() throws Exception {
+        serve(200, "{\"token_endpoint\":\"BASE/oauth/token\"}", 503, "{}");
+        var e = assertThrows(AuthFIException.class, () -> AgentDiscovery.fetch(HttpClient.newHttpClient(), base));
+        assertEquals(503, e.getStatus());
+        server.stop(0);
+        serve(503, "{}", 200, "{\"endpoints\":{\"token\":\"BASE/deprecated\"}}");
+        var e2 = assertThrows(AuthFIException.class, () -> AgentDiscovery.fetch(HttpClient.newHttpClient(), base));
+        assertEquals(503, e2.getStatus());
+    }
+
+    @Test
+    void aDeploymentThatServesOnlyTheAuthorizationServerDocumentStillMints() throws Exception {
+        serve(200, "{\"token_endpoint\":\"BASE/oauth/token\"}", 404, "{}");
+        var d = AgentDiscovery.fetch(HttpClient.newHttpClient(), base);
+        assertEquals(base + "/oauth/token", d.tokenEndpoint());
+        assertNull(d.requestApprovalEndpoint());
+        var http = new HttpTransport(new AuthFIConfig("acme", null, null, null, "agt_1", null, pem(), "key-1", base,
+            AuthFIConfig.AuthMode.AGENT_CREDENTIALS));
+        http.useDiscovery(d);
+        assertEquals(501, assertThrows(AuthFIException.class, () -> http.requestApproval("x", Map.of())).getStatus());
+        assertEquals(501, assertThrows(AuthFIException.class, () -> http.approvalStatus("ap-1")).getStatus());
+    }
+
+    @Test
+    void theAgentDocumentIsTheFallbackWhenTheAuthorizationServerAdvertisesNoTokenEndpoint() throws Exception {
+        serve(200, "{\"token_endpoint\":\"  \"}", 200, "{\"endpoints\":{\"token\":\"BASE/legacy\"}}");
+        assertEquals(base + "/legacy", AgentDiscovery.fetch(HttpClient.newHttpClient(), base).tokenEndpoint());
+        server.stop(0);
+        serve(404, "{}", 404, "{}");
+        assertEquals(404, assertThrows(AuthFIException.class, () -> AgentDiscovery.fetch(HttpClient.newHttpClient(), base)).getStatus());
+        server.stop(0);
+        serve(200, "{}", 200, "{\"endpoints\":{}}");
+        assertEquals(502, assertThrows(AuthFIException.class, () -> AgentDiscovery.fetch(HttpClient.newHttpClient(), base)).getStatus());
+    }
+
+    @Test
+    void credentialsAreNeverSentToANonHttpsEndpoint() throws Exception {
+        for (String bad : new String[]{"http://evil.example/oauth/token", "ftp://evil.example/t", "not a url"}) {
+            serve(200, "{\"token_endpoint\":\"" + bad + "\"}", 404, "{}");
+            var e = assertThrows(AuthFIException.class, () -> AgentDiscovery.fetch(HttpClient.newHttpClient(), base), bad);
+            assertEquals(502, e.getStatus());
+            server.stop(0);
+        }
+        serve(200, "{\"token_endpoint\":\"https://platform-beta.authfi.io/oauth/token\"}", 404, "{}");
+        assertEquals("https://platform-beta.authfi.io/oauth/token",
+            AgentDiscovery.fetch(HttpClient.newHttpClient(), base).tokenEndpoint());
+    }
+
+    @Test
+    void anAgentWithNoCredentialCannotRequestAnApproval() throws Exception {
+        start();
+        var http = new HttpTransport(new AuthFIConfig("acme", null, null, null, "agt_1", null, null, null, base,
+            AuthFIConfig.AuthMode.AGENT_CREDENTIALS));
+        http.useDiscovery(AgentDiscovery.fetch(HttpClient.newHttpClient(), base));
+        assertEquals(401, assertThrows(AuthFIException.class, () -> http.requestApproval("x", Map.of())).getStatus());
+        assertTrue(requests.stream().noneMatch(r -> r.startsWith("POST /approvals")), "nothing was sent");
+    }
+
+    @Test
+    void theApprovalIdIsEncodedIntoTheStatusUrl() throws Exception {
+        start();
+        var http = transport();
+        http.approvalStatus("a/b c");
+        assertTrue(requests.contains("GET /approvals/a/b c") || requests.stream().anyMatch(r -> r.startsWith("GET /approvals/a")), requests.toString());
+        assertTrue(requests.stream().noneMatch(r -> r.equals("GET /approvals/a/b")), "the slash did not split the path");
+    }
 }

@@ -137,17 +137,37 @@ public final class AgentDiscovery {
                     + "that is the only agent authentication this SDK implements.", 400);
         }
 
-        return new AgentDiscovery(token, backchannel, methods,
+        return new AgentDiscovery(secure(token, "token endpoint"), secure(backchannel, "backchannel endpoint"), methods,
             strings(methodsDoc.get("grant_types_supported")),
-            str(ep.get("request_approval")), str(ep.get("approval")));
+            secure(str(ep.get("request_approval")), "approval endpoint"),
+            secure(str(ep.get("approval")), "approval status endpoint"));
     }
 
+    /** The document, or null when the deployment does not serve it (404). Any other failure is thrown, so a transient error is never cached as "absent". */
     private static Map<String, Object> tryGet(HttpClient client, String url) {
         try {
             return get(client, url);
         } catch (AuthFIException e) {
-            return null;
+            if (e.getStatus() == 404) return null;
+            throw e;
         }
+    }
+
+    /** An endpoint the SDK will send credentials to must be https (loopback excepted, for local development). */
+    private static String secure(String endpoint, String what) {
+        if (endpoint == null || endpoint.isBlank()) return endpoint;
+        URI u;
+        try {
+            u = URI.create(endpoint.replace("{id}", "x"));
+        } catch (IllegalArgumentException e) {
+            throw new AuthFIException("The advertised " + what + " is not a URL.", 502);
+        }
+        String host = u.getHost();
+        boolean loopback = "localhost".equals(host) || "127.0.0.1".equals(host) || "::1".equals(host) || "[::1]".equals(host);
+        if (!"https".equalsIgnoreCase(u.getScheme()) && !("http".equalsIgnoreCase(u.getScheme()) && loopback)) {
+            throw new AuthFIException("The advertised " + what + " is not https, so credentials will not be sent to it.", 502);
+        }
+        return endpoint;
     }
 
     @SuppressWarnings("unchecked")

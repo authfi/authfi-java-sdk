@@ -125,4 +125,49 @@ class SecretLeakTest {
         var e2 = new AuthFIException("ags " + AGENT_SECRET + " " + API_KEY, new RuntimeException("x"));
         assertNoSecret("exception with cause", e2.getMessage());
     }
+
+    @Test
+    void opaqueSecretsWithNoRecognisableShapeAreMaskedOnEveryErrorPath() throws Exception {
+        String opaque = "plainopaquevalue99887766";
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", ex -> {
+            String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String port = String.valueOf(server.getAddress().getPort());
+            String path = ex.getRequestURI().getPath();
+            if (path.endsWith("oauth-authorization-server") || path.endsWith("agent-configuration")) {
+                byte[] doc = ("{\"token_endpoint\":\"http://127.0.0.1:" + port + "/token\","
+                    + "\"endpoints\":{\"request_approval\":\"http://127.0.0.1:" + port + "/approvals\"}}")
+                    .getBytes(StandardCharsets.UTF_8);
+                ex.sendResponseHeaders(200, doc.length);
+                ex.getResponseBody().write(doc);
+                ex.close();
+                return;
+            }
+            String echo = "rejected " + opaque + " in " + body + " via " + ex.getRequestHeaders().getFirst("X-API-Key")
+                + " json \"" + opaque + "\" form " + java.net.URLEncoder.encode(opaque, StandardCharsets.UTF_8);
+            byte[] b = echo.getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(400, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+        server.start();
+        String base = "http://127.0.0.1:" + server.getAddress().getPort();
+
+        var api = new HttpTransport(new AuthFIConfig("acme", opaque, null, null, null, null, null, null, base,
+            AuthFIConfig.AuthMode.API_KEY));
+        assertFalse(everything(assertThrows(AuthFIException.class, () -> api.get("/u"))).contains(opaque), "management");
+        assertFalse(everything(assertThrows(AuthFIException.class, () -> api.post("/u", java.util.Map.of("k", "v")))).contains(opaque), "post");
+
+        var cc = new HttpTransport(new AuthFIConfig("acme", null, "FIC-1", opaque, null, null, null, null, base,
+            AuthFIConfig.AuthMode.CLIENT_CREDENTIALS));
+        assertFalse(everything(assertThrows(AuthFIException.class, cc::clientCredentialsToken)).contains(opaque), "client credentials");
+        assertFalse(everything(assertThrows(AuthFIException.class, () -> cc.tokenExchange("subj"))).contains(opaque), "exchange");
+
+        // A legacy agent: the secret goes to the token endpoint and comes back in the error.
+        var agent = new HttpTransport(new AuthFIConfig("acme", null, null, null, "agt_1", opaque, null, null, base,
+            AuthFIConfig.AuthMode.AGENT_CREDENTIALS));
+        agent.useDiscovery(io.authfi.agent.AgentDiscovery.fetch(java.net.http.HttpClient.newHttpClient(), base));
+        assertFalse(everything(assertThrows(AuthFIException.class, agent::agentToken)).contains(opaque), "agent token");
+        assertFalse(everything(assertThrows(AuthFIException.class, () -> agent.requestApproval("a", java.util.Map.of()))).contains(opaque), "approval");
+    }
 }

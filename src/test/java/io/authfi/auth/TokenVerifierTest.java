@@ -264,4 +264,102 @@ class TokenVerifierTest {
         assertDoesNotThrow(() -> v.requireRole(claims, "editor"));
         assertEquals(403, assertThrows(AuthFIException.class, () -> v.requireRole(claims, "admin")).getStatus());
     }
+
+    private static String reheader(String jws, String headerJson) {
+        String[] p = jws.split("\\.");
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(headerJson.getBytes()) + "." + p[1] + "." + p[2];
+    }
+
+    @Test
+    void refusesMissingBlankAndCriticalHeaders() throws Exception {
+        Keys k = Keys.generate();
+        var v = verifierFor(k);
+        // No kid: without the check the key selector would try every published key.
+        SignedJWT noKid = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.EdDSA)
+            .type(new JOSEObjectType("at+jwt")).build(), goodClaims().build());
+        noKid.sign(new Ed25519Signer(k.okp));
+        assertRefused("token_key_unknown", v, noKid.serialize());
+        assertRefused("token_key_unknown", v, reheader(noKid.serialize(), "{\"alg\":\"EdDSA\",\"typ\":\"at+jwt\",\"kid\":\" \"}"));
+        assertRefused("token_claims_invalid", v, reheader(noKid.serialize(),
+            "{\"alg\":\"EdDSA\",\"typ\":\"at+jwt\",\"kid\":\"ed1\",\"crit\":[\"exp\"],\"exp\":1}"));
+        assertRefused("token_malformed", v, "x".repeat(16 * 1024 + 1));
+    }
+
+    @Test
+    void refusesBlankSubTenantAndAudience() throws Exception {
+        Keys k = Keys.generate();
+        var v = verifierFor(k);
+        assertRefused("token_claims_invalid", v, sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt", goodClaims().subject(" ").build()));
+        assertRefused("token_no_tenant", v, sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt", goodClaims().claim("tenant_id", " ").build()));
+        assertRefused("token_audience_mismatch", v, sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt", goodClaims().audience("").build()));
+        assertRefused("token_audience_mismatch", v, sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt", goodClaims().audience(List.of()).build()));
+    }
+
+    @Test
+    void notBeforeAndIssuedAtHonourTheLeeway() throws Exception {
+        Keys k = Keys.generate();
+        var v = verifierFor(k);
+        long now = System.currentTimeMillis();
+        assertEquals("usr_1", v.verify(sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt",
+            goodClaims().notBeforeTime(new Date(now + 30_000)).issueTime(new Date(now + 30_000)).build())).sub());
+        assertRefused("token_claims_invalid", v, sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt",
+            goodClaims().issueTime(new Date(now + 600_000)).build()));
+        var strict = TokenVerifier.builder(testConfig()).audience(AUD).leeway(Duration.ZERO)
+            .keys(new ImmutableJWKSet<>(k.publicSet())).build();
+        assertRefused("token_claims_invalid", strict, sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt",
+            goodClaims().notBeforeTime(new Date(now + 30_000)).build()));
+    }
+
+    @Test
+    void leewayIsBounded() {
+        assertThrows(IllegalArgumentException.class, () -> TokenVerifier.builder(testConfig()).leeway(Duration.ofSeconds(-1)));
+        assertThrows(IllegalArgumentException.class, () -> TokenVerifier.builder(testConfig()).leeway(Duration.ofSeconds(301)));
+        assertDoesNotThrow(() -> TokenVerifier.builder(testConfig()).leeway(Duration.ofSeconds(300)));
+    }
+
+    @Test
+    void refusesAnEd25519KeyOfTheWrongCurveOrLength() throws Exception {
+        Keys k = Keys.generate();
+        OctetKeyPair x25519 = new OctetKeyPairGenerator(Curve.X25519).keyID("ed1").generate();
+        var v = TokenVerifier.builder(testConfig()).audience(AUD)
+            .keys(new ImmutableJWKSet<>(new JWKSet(x25519.toPublicJWK()))).build();
+        assertRefused("token_signature_invalid", v, sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt", goodClaims().build()));
+    }
+
+    @Test
+    void skipsEncryptionKeysAndTriesEveryKeyWithTheKid() throws Exception {
+        Keys k = Keys.generate();
+        OctetKeyPair other = new OctetKeyPairGenerator(Curve.Ed25519).keyID("ed1").generate();
+        var set = new JWKSet(List.of(other.toPublicJWK(), k.okp.toPublicJWK()));
+        var v = TokenVerifier.builder(testConfig()).audience(AUD).keys(new ImmutableJWKSet<>(set)).build();
+        // The token was signed by the second key that carries the kid.
+        assertEquals("usr_1", v.verify(sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt", goodClaims().build())).sub());
+
+        RSAKey enc = new RSAKeyGenerator(2048).keyID("enc1").keyUse(com.nimbusds.jose.jwk.KeyUse.ENCRYPTION).generate();
+        var vEnc = TokenVerifier.builder(testConfig()).audience(AUD)
+            .keys(new ImmutableJWKSet<>(new JWKSet(enc.toPublicJWK()))).build();
+        assertRefused("token_key_unknown", vEnc, sign(enc, JWSAlgorithm.RS256, "at+jwt", goodClaims().build()));
+    }
+
+    @Test
+    void aKeyFetchFailureIsServiceUnavailableAndARateLimitedRefetchIsAnUnknownKey() {
+        var down = TokenVerifier.builder(testConfig()).audience(AUD)
+            .keys((selector, ctx) -> { throw new com.nimbusds.jose.KeySourceException("down"); }).build();
+        String any = "eyJhbGciOiJFZERTQSIsInR5cCI6ImF0K2p3dCIsImtpZCI6ImVkMSJ9.e30.AAAA";
+        var ex = assertThrows(AuthFIException.class, () -> down.verify(any));
+        assertEquals(503, ex.getStatus());
+        var limited = TokenVerifier.builder(testConfig()).audience(AUD)
+            .keys((selector, ctx) -> { throw new com.nimbusds.jose.jwk.source.RateLimitReachedException(); }).build();
+        assertRefused("token_key_unknown", limited, any);
+    }
+
+    @Test
+    void bearerSchemeIsCaseInsensitive() throws Exception {
+        Keys k = Keys.generate();
+        var v = verifierFor(k);
+        String t = sign(k.okp, JWSAlgorithm.EdDSA, "at+jwt", goodClaims().build());
+        assertEquals("usr_1", v.verifyHeader("bearer " + t).sub());
+        assertEquals("usr_1", v.verifyHeader("BEARER " + t).sub());
+        assertThrows(AuthFIException.class, () -> v.verifyHeader("Bearer"));
+    }
 }

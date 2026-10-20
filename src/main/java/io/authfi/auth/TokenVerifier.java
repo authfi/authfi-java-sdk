@@ -11,10 +11,12 @@ import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKMatcher;
 import com.nimbusds.jose.jwk.JWKSelector;
+import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.OctetKeyPair;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
+import com.nimbusds.jose.jwk.source.RateLimitReachedException;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jose.util.DefaultResourceRetriever;
 import com.nimbusds.jwt.JWTClaimsSet;
@@ -158,6 +160,7 @@ public class TokenVerifier {
             return JWKSourceBuilder
                 .create(URI.create(config.jwksUrl()).toURL(), new DefaultResourceRetriever(3000, 3000, 64 * 1024))
                 .retrying(true)
+                .outageTolerant(true)
                 .build();
         } catch (MalformedURLException | IllegalArgumentException e) {
             throw new AuthFIException("Invalid JWKS URL: " + config.jwksUrl(), e);
@@ -214,29 +217,30 @@ public class TokenVerifier {
         List<JWK> candidates;
         try {
             candidates = keys.get(new JWKSelector(new JWKMatcher.Builder().keyID(header.getKeyID()).build()), null);
+        } catch (RateLimitReachedException e) {
+            // An unknown kid already caused a refetch moments ago; to the caller it is still an unknown key.
+            throw refuse("token_key_unknown");
         } catch (Exception e) {
             throw new AuthFIException("The signing keys could not be fetched", 503, "token_key_unknown");
         }
-        if (candidates == null || candidates.isEmpty()) {
-            throw refuse("token_key_unknown");
-        }
-        JWK key = candidates.get(0);
-        // A key that declares an algorithm signs with that one only; the token's header never overrides it.
         JWSAlgorithm alg = header.getAlgorithm();
-        if (key.getAlgorithm() != null && !key.getAlgorithm().getName().equals(alg.getName())) {
-            throw refuse("token_signature_invalid");
-        }
-        try {
-            boolean ok = alg.equals(JWSAlgorithm.EdDSA) && key instanceof OctetKeyPair okp
-                ? verifyEd25519(jwt, okp)
-                : jwt.verify(verifierFor(alg, key));
-            if (!ok) {
-                throw refuse("token_signature_invalid");
+        boolean sawKey = false;
+        // Only signing keys, and every key that carries the kid: a rotation can briefly publish two.
+        for (JWK key : candidates == null ? List.<JWK>of() : candidates) {
+            if (key.getKeyUse() != null && !KeyUse.SIGNATURE.equals(key.getKeyUse())) continue;
+            sawKey = true;
+            // A key that declares an algorithm signs with that one only; the token's header never overrides it.
+            if (key.getAlgorithm() != null && !key.getAlgorithm().getName().equals(alg.getName())) continue;
+            try {
+                boolean ok = alg.equals(JWSAlgorithm.EdDSA) && key instanceof OctetKeyPair okp
+                    ? verifyEd25519(jwt, okp)
+                    : jwt.verify(verifierFor(alg, key));
+                if (ok) return;
+            } catch (JOSEException | GeneralSecurityException e) {
+                // This key's type does not suit the algorithm, or the key is unusable; try the next.
             }
-        } catch (JOSEException | GeneralSecurityException e) {
-            // The key's type does not suit the algorithm, or the key is unusable.
-            throw refuse("token_signature_invalid");
         }
+        throw refuse(sawKey ? "token_signature_invalid" : "token_key_unknown");
     }
 
     /** SPKI prefix of an Ed25519 public key; the 32-byte key follows. */
