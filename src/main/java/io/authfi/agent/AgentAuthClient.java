@@ -69,7 +69,11 @@ public class AgentAuthClient {
         if (id == null || id.isBlank()) {
             throw new AuthFIException("The approval request was accepted but carried no approval id.", 502);
         }
-        return new ApprovalRequest(id, asString(resp.get("status")), epoch(resp.get("expires_at")),
+        String status = asString(resp.get("status"));
+        if (status == null || status.isBlank()) {
+            throw new AuthFIException("The approval request was accepted but carried no status.", 502);
+        }
+        return new ApprovalRequest(id, status, epoch(resp.get("expires_at")),
             asString(resp.get("poll_url")));
     }
 
@@ -163,11 +167,20 @@ public class AgentAuthClient {
     /** The platform wraps every answer as {"data": {...}}; older shapes are read as they are. */
     @SuppressWarnings("unchecked")
     private Map<String, Object> unwrap(String json) {
-        Map<String, Object> r = gson.fromJson(json, Map.class);
+        Map<String, Object> r;
+        try {
+            r = gson.fromJson(json, Map.class);
+        } catch (com.google.gson.JsonParseException e) {
+            throw new AuthFIException("The approval answer was not a JSON object.", 502);
+        }
         if (r == null) {
             throw new AuthFIException("The approval answer was empty.", 502);
         }
         return r.get("data") instanceof Map ? (Map<String, Object>) r.get("data") : r;
+    }
+
+    private static Object firstNonNull(Object a, Object b) {
+        return a != null ? a : b;
     }
 
     /** Epoch seconds from either a number or an RFC 3339 timestamp; 0 when absent. */
@@ -192,9 +205,9 @@ public class AgentAuthClient {
 
         return switch (status) {
             case "approved" -> new Approval.Approved(approvalId,
-                asString(r.get("approver_user_id")), epoch(r.getOrDefault("resolved_at", r.get("approved_at"))));
+                asString(r.get("approver_user_id")), epoch(firstNonNull(r.get("resolved_at"), r.get("approved_at"))));
             case "denied" -> new Approval.Denied(approvalId,
-                asString(r.get("reason")), epoch(r.getOrDefault("resolved_at", r.get("denied_at"))));
+                asString(r.get("reason")), epoch(firstNonNull(r.get("resolved_at"), r.get("denied_at"))));
             case "expired" -> new Approval.Expired(approvalId);
             case "pending" -> new Approval.Pending(approvalId, epoch(r.get("expires_at")));
             default -> throw new AuthFIException("The approval has an unknown status: " + status, 502);

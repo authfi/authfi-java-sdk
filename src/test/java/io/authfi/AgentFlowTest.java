@@ -32,6 +32,7 @@ class AgentFlowTest {
     private final List<String> requests = new CopyOnWriteArrayList<>();
     private final List<String> auth = new CopyOnWriteArrayList<>();
     private String base;
+    private volatile String postAnswer = "{\"data\":{\"approval_id\":\"ap-1\",\"status\":\"pending\",\"expires_at\":\"2026-10-21T00:00:00Z\"}}";
 
     @AfterEach
     void stop() {
@@ -63,7 +64,7 @@ class AgentFlowTest {
             auth.add(String.valueOf(ex.getRequestHeaders().getFirst("Authorization")));
             if (ex.getRequestMethod().equals("POST")) {
                 requests.add("POST /approvals " + body);
-                answer(ex, 202, "{\"data\":{\"approval_id\":\"ap-1\",\"status\":\"pending\",\"expires_at\":\"2026-10-21T00:00:00Z\"}}");
+                answer(ex, 202, postAnswer);
             } else {
                 requests.add(ex.getRequestMethod() + " " + ex.getRequestURI().getPath());
                 String id = ex.getRequestURI().getPath().substring("/approvals/".length());
@@ -266,5 +267,62 @@ class AgentFlowTest {
         assertInstanceOf(Approval.Expired.class, client.checkApproval("ap-expired"));
         assertInstanceOf(Approval.Pending.class, client.checkApproval("ap-pending"));
         assertEquals(502, assertThrows(AuthFIException.class, () -> client.checkApproval("ap-weird")).getStatus());
+    }
+
+    @Test
+    void aMalformedApprovalAnswerIsAClearErrorNotACrashOrANull() throws Exception {
+        start();
+        var http = transport();
+        var client = new AgentAuthClient(configOf(http), http);
+        for (String bad : new String[]{"\"str\"", "42", "null", "{}", "{\"data\":{\"status\":\"pending\"}}",
+            "{\"data\":{\"approval_id\":\"ap-1\"}}", "{\"data\":{\"approval_id\":\"ap-1\",\"status\":\" \"}}"}) {
+            postAnswer = bad;
+            var e = assertThrows(AuthFIException.class, () -> client.requestApproval("x", Map.of()), bad);
+            assertEquals(502, e.getStatus(), bad);
+        }
+    }
+
+    @Test
+    void aResolvedAtOfNullDoesNotHideTheLegacyTimestamp() throws Exception {
+        start();
+        server.createContext("/approvals/legacy", ex -> answer(ex, 200,
+            "{\"status\":\"approved\",\"approver_user_id\":\"u\",\"resolved_at\":null,\"approved_at\":77}"));
+        var http = transport();
+        var client = new AgentAuthClient(configOf(http), http);
+        var a = assertInstanceOf(Approval.Approved.class, client.checkApproval("legacy"));
+        assertEquals(77L, a.approvedAtEpochSec());
+    }
+
+    @Test
+    void theApprovalAndBackchannelEndpointsAreHeldToHttpsToo() throws Exception {
+        String[] fields = {"request_approval", "approval"};
+        for (String field : fields) {
+            serve(200, "{\"token_endpoint\":\"https://ok.example/t\"}", 200,
+                "{\"endpoints\":{\"" + field + "\":\"http://evil.example/x\"}}");
+            var e = assertThrows(AuthFIException.class, () -> AgentDiscovery.fetch(HttpClient.newHttpClient(), base), field);
+            assertEquals(502, e.getStatus());
+            server.stop(0);
+        }
+        serve(200, "{\"token_endpoint\":\"https://ok.example/t\",\"backchannel_authentication_endpoint\":\"http://evil.example/b\"}", 404, "{}");
+        assertEquals(502, assertThrows(AuthFIException.class, () -> AgentDiscovery.fetch(HttpClient.newHttpClient(), base)).getStatus());
+    }
+
+    @Test
+    void withoutAnAdvertisedIssuerTheAssertionNamesTheConfiguredOne() throws Exception {
+        serve(200, "{\"token_endpoint\":\"BASE/oauth/token\"}", 200,
+            "{\"endpoints\":{\"request_approval\":\"BASE/approvals\"}}");
+        server.createContext("/approvals", ex -> {
+            requests.add("POST /approvals " + new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            answer(ex, 202, postAnswer);
+        });
+        var d = AgentDiscovery.fetch(HttpClient.newHttpClient(), base);
+        assertNull(d.issuer());
+        var http = new HttpTransport(new AuthFIConfig("acme", null, null, null, "agt_1", null, pem(), "key-1", base,
+            AuthFIConfig.AuthMode.AGENT_CREDENTIALS));
+        http.useDiscovery(d);
+        http.requestApproval("x", Map.of());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = new Gson().fromJson(requests.get(0).substring("POST /approvals ".length()), Map.class);
+        assertion((String) body.get("client_assertion"), "https://acme.authfi.io");
     }
 }

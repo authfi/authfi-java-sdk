@@ -86,4 +86,54 @@ class RedactTest {
         assertNull(Redact.scrub(null, "abcd"));
         assertEquals("plain text", Redact.scrub("plain text", (String) null));
     }
+
+    private static String realPem(int bits) throws Exception {
+        var g = java.security.KeyPairGenerator.getInstance("RSA");
+        g.initialize(bits);
+        String body = java.util.Base64.getMimeEncoder(64, "\n".getBytes())
+            .encodeToString(g.generateKeyPair().getPrivate().getEncoded());
+        return "-----BEGIN PRIVATE KEY-----\n" + body + "\n-----END PRIVATE KEY-----\n";
+    }
+
+    @Test
+    void aRealSizedPrivateKeyIsMaskedWithoutOverflowingTheStack() throws Exception {
+        for (int bits : new int[]{2048, 3072, 4096}) {
+            String pem = realPem(bits);
+            String out = assertDoesNotThrow(() -> Redact.scrub("failed with key " + pem + " end"));
+            assertEquals("failed with key [redacted]
+ end", out);
+            assertDoesNotThrow(() -> new AuthFIException("x " + pem, 500));
+        }
+        String escaped = realPem(4096).replace("\n", "\n");
+        assertEquals("k [redacted]", Redact.scrub("k " + escaped));
+    }
+
+    @Test
+    void hostileInputIsLinearAndDoesNotOverflow() {
+        String[] hostile = {
+            "-----BEGIN PRIVATE KEY-----" + "A".repeat(1_000_000),
+            "-----BEGIN PRIVATE KEY-----" + " ".repeat(1_000_000),
+            "-----BEGIN PRIVATE KEY-----" + "\n".repeat(500_000),
+            "client_secret=".repeat(80_000),
+            "secret".repeat(150_000)};
+        for (String h : hostile) {
+            long t = System.nanoTime();
+            assertDoesNotThrow(() -> Redact.scrub(h));
+            assertTrue((System.nanoTime() - t) / 1_000_000 < 5_000, "slow on hostile input");
+        }
+    }
+
+    @Test
+    void literalMaskingStillAppliesTheShapeMasking() {
+        String out = Redact.scrub("pw hunter2hunter2 and eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJ1c3JfMSJ9.c2ln", "hunter2hunter2");
+        assertFalse(out.contains("hunter2"));
+        assertFalse(out.contains("eyJhbGci"), out);
+    }
+
+    @Test
+    void aSecretEchoedWithPercentTwentyOrLowerCaseHexIsMasked() {
+        String secret = "a b/c+d";
+        assertFalse(Redact.scrub("x a%20b%2Fc%2Bd y", secret).contains("%2"));
+        assertFalse(Redact.scrub("x a+b%2fc%2bd y", secret).contains("%2"));
+    }
 }
