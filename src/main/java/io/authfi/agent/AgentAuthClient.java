@@ -6,7 +6,6 @@ import io.authfi.AuthFIException;
 import io.authfi.HttpTransport;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -59,16 +58,13 @@ public class AgentAuthClient {
         return capabilities().contains(action);
     }
 
-    /** POST /{tenant}/v1/agents/request-approval — submit a HIL approval request. Returns immediately (HTTP 202). */
+    /**
+     * Submit a human-approval request at the deployment's advertised approval endpoint. Returns
+     * immediately (HTTP 202). The request is signed with the agent's key; no secret is sent.
+     */
     public ApprovalRequest requestApproval(String action, Map<String, Object> context) {
         requireAgentMode();
-        Map<String, Object> body = new HashMap<>();
-        body.put("agent_id", config.agentId());
-        body.put("client_secret", config.agentSecret());
-        body.put("requesting_action", action);
-        body.put("context", context != null ? context : Map.of());
-
-        String jsonBody = http.postAsAgent("/agents/request-approval", body);
+        String jsonBody = http.requestApproval(action, context);
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = gson.fromJson(jsonBody, Map.class);
         Number expires = (Number) resp.get("expires_at");
@@ -80,11 +76,10 @@ public class AgentAuthClient {
         );
     }
 
-    /** GET /{tenant}/v1/agents/approvals/{id} — single poll. Use {@link #awaitDecision} for blocking. */
+    /** A single poll of an approval, with the agent's token. Use {@link #awaitDecision} to block. */
     public Approval checkApproval(String approvalId) {
-        // Unauthenticated GET — the approval_id is the bearer of capability.
-        String json = http.getAnonymous(config.v1Url() + "/agents/approvals/" + approvalId);
-        return parseApproval(json, approvalId);
+        requireAgentMode();
+        return parseApproval(http.approvalStatus(approvalId), approvalId);
     }
 
     /**

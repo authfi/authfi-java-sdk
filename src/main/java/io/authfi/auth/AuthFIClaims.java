@@ -45,6 +45,19 @@ public record AuthFIClaims(
         );
     }
 
+    /** The {@code aud} claim, whether the token carried a string or a list. */
+    public List<String> audience() {
+        Object a = raw.get("aud");
+        if (a instanceof String one) return List.of(one);
+        if (a instanceof List<?> many) return many.stream().map(Object::toString).toList();
+        return List.of();
+    }
+
+    /** The agent acting for the subject ({@code act.sub}), or empty when the token is not delegated. */
+    public String actor() {
+        return raw.get("act") instanceof Map<?, ?> act && act.get("sub") != null ? act.get("sub").toString() : "";
+    }
+
     public boolean hasPermission(String permission) {
         return permissions.contains(permission);
     }

@@ -10,13 +10,13 @@ public class AuthFIException extends RuntimeException {
     }
 
     public AuthFIException(String message, int status, String code) {
-        super(message);
+        super(Redact.scrub(message));
         this.status = status;
         this.code = code;
     }
 
     public AuthFIException(String message, Throwable cause) {
-        super(message, cause);
+        super(Redact.scrub(message), cause);
         this.status = 500;
         this.code = null;
     }

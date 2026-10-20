@@ -138,7 +138,7 @@ public class HttpTransport {
         try {
             var res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
-                throw new AuthFIException("Token request failed: " + res.body(), res.statusCode());
+                throw new AuthFIException("Token request failed: " + config.scrub(res.body()), res.statusCode());
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> tokenMap = gson.fromJson(res.body(), Map.class);
@@ -173,7 +173,7 @@ public class HttpTransport {
         try {
             var res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
-                throw new AuthFIException("Token exchange failed: " + res.body(), res.statusCode());
+                throw new AuthFIException("Token exchange failed: " + config.scrub(res.body()), res.statusCode());
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> tokenMap = gson.fromJson(res.body(), Map.class);
@@ -233,7 +233,7 @@ public class HttpTransport {
         try {
             var res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
-                throw new AuthFIException("Agent token request failed: " + res.body(), res.statusCode());
+                throw new AuthFIException("Agent token request failed: " + config.scrub(res.body()), res.statusCode());
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> tokenMap = gson.fromJson(res.body(), Map.class);
@@ -274,10 +274,67 @@ public class HttpTransport {
         return d.tokenEndpoint();
     }
 
+    /** Test seam: use this discovery document instead of fetching the issuer's. */
+    void useDiscovery(AgentDiscovery d) {
+        this.discovery = d;
+    }
+
     /** The discovery document this client is using, fetching it if it has not been read yet. */
     public AgentDiscovery agentDiscovery() {
         agentTokenUrl();
         return discovery;
+    }
+
+    /**
+     * Ask for a human approval at the advertised {@code request_approval} endpoint.
+     *
+     * <p>The request authenticates in its body, like the token mint: a fresh {@code private_key_jwt}
+     * assertion whose audience is the URL being posted to. A key-registered agent has no secret,
+     * so the secret path exists only for a legacy agent that was registered with one.
+     */
+    public String requestApproval(String action, Map<String, Object> context) {
+        AgentDiscovery d = agentDiscovery();
+        String url = d.requestApprovalEndpoint();
+        if (url == null || url.isBlank()) {
+            throw new AuthFIException("This deployment advertises no approval endpoint.", 501);
+        }
+        if (config.agentId() == null) {
+            throw new AuthFIException("agent_id is required for agent calls", 401);
+        }
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("agent_id", config.agentId());
+        body.put("requesting_action", action);
+        body.put("context", context != null ? context : Map.of());
+        if (config.hasAgentKey()) {
+            body.put("client_assertion_type", ClientAssertion.TYPE);
+            body.put("client_assertion", ClientAssertion.build(
+                config.agentId(), url, config.agentKeyId(), config.agentPrivateKey()));
+        } else if (config.agentSecret() != null) {
+            body.put("client_secret", config.agentSecret());
+        } else {
+            throw new AuthFIException("An agent needs a private key and key id to request an approval.", 401);
+        }
+        var req = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
+            .build();
+        return send(req, "POST " + url);
+    }
+
+    /** The status of an approval, read at the advertised {@code approval} endpoint with the agent's token. */
+    public String approvalStatus(String approvalId) {
+        String template = agentDiscovery().approvalEndpoint();
+        if (template == null || template.isBlank()) {
+            throw new AuthFIException("This deployment advertises no approval endpoint.", 501);
+        }
+        String url = template.replace("{id}", URLEncoder.encode(approvalId, StandardCharsets.UTF_8));
+        var req = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Authorization", "Bearer " + agentToken())
+            .GET()
+            .build();
+        return send(req, "GET " + url);
     }
 
     /** Capabilities granted to this agent, populated as a side effect of {@link #agentToken()}. */
@@ -350,7 +407,7 @@ public class HttpTransport {
         try {
             var res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() >= 400) {
-                throw new AuthFIException("API error (" + label + "): " + res.body(), res.statusCode());
+                throw new AuthFIException("API error (" + label + "): " + config.scrub(res.body()), res.statusCode());
             }
             return res.body();
         } catch (AuthFIException e) {

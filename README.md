@@ -7,7 +7,7 @@ Official Java SDK for [AuthFI](https://authfi.io) — the identity control plane
 <dependency>
     <groupId>io.authfi</groupId>
     <artifactId>authfi-sdk</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.1</version>
 </dependency>
 ```
 
@@ -156,7 +156,8 @@ agent.agentAuth().guard("send_email_external", Map.of("to", boss), () -> {
 // Throws ApprovalDeniedException on deny / expire / timeout — pick one switch.
 ```
 
-Or do it manually with the sealed `Approval` result:
+The request is signed with the agent's key and sent to the approval endpoint the deployment advertises;
+no client secret is involved. Or do it manually with the sealed `Approval` result:
 
 ```java
 ApprovalRequest req = agent.agentAuth().requestApproval("send_external", Map.of(...));
@@ -180,6 +181,22 @@ authfi.myAgents().revoke(userJwt, agentId);
 authfi.myAgents().activity(userJwt, agentId);
 ```
 
+## Verifying tokens in your API
+
+```java
+TokenVerifier verifier = authfi.verifier("api_orders");   // your API's audience
+AuthFIClaims claims = verifier.verifyHeader(request.getHeader("Authorization"));
+```
+
+The verifier accepts only access tokens (`typ` `at+jwt`) signed with EdDSA, ES256, PS256 or RS256 by a key
+the issuer publishes, whose `iss` is your tenant, whose `aud` names your API, and which has not expired. A
+user's token, an agent's token and a token an agent holds for a person all verify the same way. An ID token,
+a token for another API, or a token with no audience is refused with a `token_*` code
+(`AuthFIException.getCode()`). The audience is required: a verifier without one cannot be built.
+
+Configuration objects print identifiers only; keys, secrets and tokens never appear in `toString`, logs or
+exception messages.
+
 ## Migration from incumbents — one URL change
 
 | If you currently use | Change |
@@ -194,7 +211,7 @@ Your `@PreAuthorize` annotations don't change.
 
 | Module                   | What it wraps                                                   | Auth                     |
 |--------------------------|-----------------------------------------------------------------|--------------------------|
-| `authfi.auth()`          | JWT verification — JWKS + RS256 (Nimbus)                        | n/a (verification only)  |
+| `authfi.verifier(aud...)`| Access-token verification: EdDSA, ES256, PS256, RS256; iss, aud, exp, typ | n/a (verification only)  |
 | `authfi.users()`         | User CRUD, role/group assignment, block/unblock                 | API key / service        |
 | `authfi.orgs()`          | Org CRUD, members, SSO config, branding                          | API key / service        |
 | `authfi.permissions()`   | Permission catalog sync, role-permission binding                 | API key / service        |
@@ -203,7 +220,7 @@ Your `@PreAuthorize` annotations don't change.
 | `authfi.mfa()`           | TOTP enroll/verify/list/unenroll                                  | end-user JWT             |
 | `authfi.auditLogs()`     | Audit log search (limit/offset/since)                            | API key / service        |
 | `authfi.tokenIntrospection()` | RFC 7662 introspect + RFC 7009 revoke                       | none (public)            |
-| `authfi.discovery()`     | `.well-known/{openid-configuration, jwks, smart-configuration, agent-auth}` | none |
+| `authfi.discovery()`     | `.well-known/{openid-configuration, jwks, smart-configuration, agent-configuration}` | none |
 | `authfi.connect()`       | Cloud credentials — GCP, AWS, Azure, OCI                         | API key / service        |
 | `authfi.agents()`        | Owner-driven agent registration (Phase 1)                         | end-user JWT             |
 | `authfi.myAgents()`      | End-user portal for managing one's agents (Phase 4)               | end-user JWT             |

@@ -59,9 +59,21 @@ public class AuthFIProperties {
     public PermissionSync getPermissionSync() { return permissionSync; }
     public void setPermissionSync(PermissionSync permissionSync) { this.permissionSync = permissionSync; }
 
+    /** Identifiers only: the API key, client secret and agent secret never print. */
+    @Override
+    public String toString() {
+        return "AuthFIProperties[tenant=" + tenant + ", clientId=" + clientId
+            + ", baseUrl=" + baseUrl + ", agent=" + agent + ", credentials=[redacted]]";
+    }
+
     public static class Agent {
         private String id;
         private String secret;
+
+        @Override
+        public String toString() {
+            return "Agent[id=" + id + ", secret=[redacted]]";
+        }
 
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }

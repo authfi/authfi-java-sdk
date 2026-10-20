@@ -12,4 +12,11 @@ public record AgentCredentials(
     String ownerUserId,
     long createdAtEpochSec,
     String warning
-) {}
+) {
+    /** Never prints the secret: a logged registration result must not leak it. */
+    @Override
+    public String toString() {
+        return "AgentCredentials[agentId=" + agentId + ", clientSecret=[redacted], type=" + type
+            + ", ownerUserId=" + ownerUserId + ", createdAtEpochSec=" + createdAtEpochSec + "]";
+    }
+}
