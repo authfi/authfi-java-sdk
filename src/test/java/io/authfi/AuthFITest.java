@@ -78,7 +78,7 @@ class AuthFITest {
             .build();
 
         // Modules should be accessible
-        assertNotNull(authfi.auth());
+        assertNotNull(authfi.verifier("api_orders"));
         assertNotNull(authfi.connect());
         assertNotNull(authfi.users());
         assertNotNull(authfi.orgs());
@@ -92,7 +92,6 @@ class AuthFITest {
             .apiKey("sk_test")
             .build();
 
-        assertSame(authfi.auth(), authfi.auth());
         assertSame(authfi.connect(), authfi.connect());
         assertSame(authfi.users(), authfi.users());
     }

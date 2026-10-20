@@ -38,6 +38,31 @@ public record AuthFIConfig(
             && agentKeyId != null && !agentKeyId.isBlank();
     }
 
+    /** Every secret value this config holds, for masking them out of text that may be logged. */
+    public String[] secrets() {
+        return new String[]{apiKey, clientSecret, agentSecret, agentPrivateKey};
+    }
+
+    /** Masks this config's secret values and secret-shaped text in {@code text}. */
+    public String scrub(String text) {
+        return Redact.scrub(text, secrets());
+    }
+
+    /**
+     * The record's generated {@code toString} printed the API key, both secrets and the agent's
+     * private key, so one logged config leaked every credential. This prints identifiers only.
+     */
+    @Override
+    public String toString() {
+        return "AuthFIConfig[tenant=" + tenant
+            + ", clientId=" + clientId
+            + ", agentId=" + agentId
+            + ", agentKeyId=" + agentKeyId
+            + ", baseUrl=" + baseUrl
+            + ", authMode=" + authMode
+            + ", credentials=" + Redact.MASK + "]";
+    }
+
     public enum AuthMode {
         /** X-API-Key header on management calls. */
         API_KEY,

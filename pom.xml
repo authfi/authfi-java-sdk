@@ -60,6 +60,13 @@
         </dependency>
 
         <!-- Test -->
+        <!-- Nimbus needs Tink to generate and sign Ed25519 keys in tests; verification does not use it. -->
+        <dependency>
+            <groupId>com.google.crypto.tink</groupId>
+            <artifactId>tink</artifactId>
+            <version>1.15.0</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

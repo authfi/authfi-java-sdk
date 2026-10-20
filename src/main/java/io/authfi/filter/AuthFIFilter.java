@@ -1,6 +1,6 @@
 package io.authfi.filter;
 
-import io.authfi.AuthFI;
+import io.authfi.auth.TokenVerifier;
 import io.authfi.AuthFIException;
 import io.authfi.auth.AuthFIClaims;
 import jakarta.servlet.*;
@@ -17,13 +17,13 @@ import java.io.IOException;
  * // Spring Boot
  * &#64;Bean
  * FilterRegistrationBean&lt;AuthFIFilter&gt; authFilter(AuthFI authfi) {
- *     var reg = new FilterRegistrationBean&lt;&gt;(new AuthFIFilter(authfi, "read:users"));
+ *     var reg = new FilterRegistrationBean&lt;&gt;(new AuthFIFilter(authfi.verifier("api_orders"), "read:users"));
  *     reg.addUrlPatterns("/api/users/*");
  *     return reg;
  * }
  *
  * // Plain servlet
- * servletContext.addFilter("authfi", new AuthFIFilter(authfi))
+ * servletContext.addFilter("authfi", new AuthFIFilter(authfi.verifier("api_orders")))
  *     .addMappingForUrlPatterns(null, true, "/api/*");
  * </pre>
  */
@@ -31,11 +31,11 @@ public class AuthFIFilter implements Filter {
 
     public static final String CLAIMS_ATTRIBUTE = "io.authfi.claims";
 
-    private final AuthFI authfi;
+    private final TokenVerifier verifier;
     private final String[] requiredPermissions;
 
-    public AuthFIFilter(AuthFI authfi, String... requiredPermissions) {
-        this.authfi = authfi;
+    public AuthFIFilter(TokenVerifier verifier, String... requiredPermissions) {
+        this.verifier = verifier;
         this.requiredPermissions = requiredPermissions;
     }
 
@@ -53,10 +53,10 @@ public class AuthFIFilter implements Filter {
 
         try {
             String header = req.getHeader("Authorization");
-            AuthFIClaims claims = authfi.auth().verifyHeader(header);
+            AuthFIClaims claims = verifier.verifyHeader(header);
 
             if (requiredPermissions.length > 0) {
-                authfi.auth().requirePermissions(claims, requiredPermissions);
+                verifier.requirePermissions(claims, requiredPermissions);
             }
 
             // Store claims on request for downstream use
@@ -66,7 +66,7 @@ public class AuthFIFilter implements Filter {
         } catch (AuthFIException e) {
             res.setStatus(e.getStatus());
             res.setContentType("application/json");
-            res.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
+            res.getWriter().write("{\"error\":\"" + (e.getCode() != null ? e.getCode() : "unauthorized") + "\"}");
         }
     }
 

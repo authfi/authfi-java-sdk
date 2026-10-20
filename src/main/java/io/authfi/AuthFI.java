@@ -43,7 +43,6 @@ public class AuthFI {
     private final AuthFIConfig config;
     private final HttpTransport http;
 
-    private volatile TokenVerifier tokenVerifier;
     private volatile ConnectClient connectClient;
     private volatile UsersClient usersClient;
     private volatile OrgsClient orgsClient;
@@ -84,12 +83,13 @@ public class AuthFI {
 
     // === Modules (lazy init, thread-safe) ===
 
-    /** Token verification — JWKS + RS256 (backed by Nimbus). */
-    public TokenVerifier auth() {
-        if (tokenVerifier == null) synchronized (this) {
-            if (tokenVerifier == null) tokenVerifier = new TokenVerifier(config);
-        }
-        return tokenVerifier;
+    /**
+     * A strict access-token verifier for the API with the given audience(s): EdDSA, ES256, PS256 and
+     * RS256, {@code typ} at+jwt, and iss, aud, exp checked. The audience is required, so there is no
+     * verifier that accepts a token minted for some other API.
+     */
+    public TokenVerifier verifier(String... audience) {
+        return new TokenVerifier(config, audience);
     }
 
     /** Cloud credentials — GCP, AWS, Azure, OCI. */

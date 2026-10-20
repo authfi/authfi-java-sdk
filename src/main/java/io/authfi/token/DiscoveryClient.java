@@ -41,8 +41,8 @@ public class DiscoveryClient {
         }
     }
 
-    /** GET /.well-known/agent-auth — AuthFI Agent Profile discovery. */
+    /** GET /.well-known/agent-configuration — AuthFI Agent Profile discovery. */
     public String agentAuth() {
-        return http.getAnonymous(config.issuer() + "/.well-known/agent-auth");
+        return http.getAnonymous(config.issuer() + "/.well-known/agent-configuration");
     }
 }

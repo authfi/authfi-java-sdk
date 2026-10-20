@@ -6,7 +6,6 @@ import io.authfi.AuthFIException;
 import io.authfi.HttpTransport;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -59,32 +58,29 @@ public class AgentAuthClient {
         return capabilities().contains(action);
     }
 
-    /** POST /{tenant}/v1/agents/request-approval — submit a HIL approval request. Returns immediately (HTTP 202). */
+    /**
+     * Submit a human-approval request at the deployment's advertised approval endpoint. Returns
+     * immediately (HTTP 202). The request is signed with the agent's key; no secret is sent.
+     */
     public ApprovalRequest requestApproval(String action, Map<String, Object> context) {
         requireAgentMode();
-        Map<String, Object> body = new HashMap<>();
-        body.put("agent_id", config.agentId());
-        body.put("client_secret", config.agentSecret());
-        body.put("requesting_action", action);
-        body.put("context", context != null ? context : Map.of());
-
-        String jsonBody = http.postAsAgent("/agents/request-approval", body);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resp = gson.fromJson(jsonBody, Map.class);
-        Number expires = (Number) resp.get("expires_at");
-        return new ApprovalRequest(
-            asString(resp.get("approval_id")),
-            asString(resp.get("status")),
-            expires != null ? expires.longValue() : 0L,
-            asString(resp.get("poll_url"))
-        );
+        Map<String, Object> resp = unwrap(http.requestApproval(action, context));
+        String id = asString(resp.get("approval_id"));
+        if (id == null || id.isBlank()) {
+            throw new AuthFIException("The approval request was accepted but carried no approval id.", 502);
+        }
+        String status = asString(resp.get("status"));
+        if (status == null || status.isBlank()) {
+            throw new AuthFIException("The approval request was accepted but carried no status.", 502);
+        }
+        return new ApprovalRequest(id, status, epoch(resp.get("expires_at")),
+            asString(resp.get("poll_url")));
     }
 
-    /** GET /{tenant}/v1/agents/approvals/{id} — single poll. Use {@link #awaitDecision} for blocking. */
+    /** A single poll of an approval, with the agent's token. Use {@link #awaitDecision} to block. */
     public Approval checkApproval(String approvalId) {
-        // Unauthenticated GET — the approval_id is the bearer of capability.
-        String json = http.getAnonymous(config.v1Url() + "/agents/approvals/" + approvalId);
-        return parseApproval(json, approvalId);
+        requireAgentMode();
+        return parseApproval(http.approvalStatus(approvalId), approvalId);
     }
 
     /**
@@ -168,31 +164,53 @@ public class AgentAuthClient {
         }
     }
 
+    /** The platform wraps every answer as {"data": {...}}; older shapes are read as they are. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> unwrap(String json) {
+        Map<String, Object> r;
+        try {
+            r = gson.fromJson(json, Map.class);
+        } catch (com.google.gson.JsonParseException e) {
+            throw new AuthFIException("The approval answer was not a JSON object.", 502);
+        }
+        if (r == null) {
+            throw new AuthFIException("The approval answer was empty.", 502);
+        }
+        return r.get("data") instanceof Map ? (Map<String, Object>) r.get("data") : r;
+    }
+
+    private static Object firstNonNull(Object a, Object b) {
+        return a != null ? a : b;
+    }
+
+    /** Epoch seconds from either a number or an RFC 3339 timestamp; 0 when absent. */
+    private static long epoch(Object o) {
+        if (o instanceof Number n) return n.longValue();
+        if (o instanceof String t && !t.isBlank()) {
+            try {
+                return java.time.Instant.parse(t).getEpochSecond();
+            } catch (java.time.format.DateTimeParseException e) {
+                return 0L;
+            }
+        }
+        return 0L;
+    }
+
     private Approval parseApproval(String json, String approvalId) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> r = gson.fromJson(json, Map.class);
+        Map<String, Object> r = unwrap(json);
         String status = asString(r.get("status"));
-        if (status == null) status = "pending";
+        if (status == null) {
+            throw new AuthFIException("The approval answer carried no status.", 502);
+        }
 
         return switch (status) {
-            case "approved" -> {
-                Number approvedAt = (Number) r.get("approved_at");
-                yield new Approval.Approved(approvalId,
-                    asString(r.get("approver_user_id")),
-                    approvedAt != null ? approvedAt.longValue() : 0L);
-            }
-            case "denied" -> {
-                Number deniedAt = (Number) r.get("denied_at");
-                yield new Approval.Denied(approvalId,
-                    asString(r.get("reason")),
-                    deniedAt != null ? deniedAt.longValue() : 0L);
-            }
+            case "approved" -> new Approval.Approved(approvalId,
+                asString(r.get("approver_user_id")), epoch(firstNonNull(r.get("resolved_at"), r.get("approved_at"))));
+            case "denied" -> new Approval.Denied(approvalId,
+                asString(r.get("reason")), epoch(firstNonNull(r.get("resolved_at"), r.get("denied_at"))));
             case "expired" -> new Approval.Expired(approvalId);
-            default -> {
-                Number expiresAt = (Number) r.get("expires_at");
-                yield new Approval.Pending(approvalId,
-                    expiresAt != null ? expiresAt.longValue() : 0L);
-            }
+            case "pending" -> new Approval.Pending(approvalId, epoch(r.get("expires_at")));
+            default -> throw new AuthFIException("The approval has an unknown status: " + status, 502);
         };
     }
 

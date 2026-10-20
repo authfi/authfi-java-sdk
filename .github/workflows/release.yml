@@ -12,7 +12,7 @@ on:
 
 jobs:
   publish:
-    runs-on: authfi-ci-java
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
