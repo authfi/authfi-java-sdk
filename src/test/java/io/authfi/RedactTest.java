@@ -100,8 +100,7 @@ class RedactTest {
         for (int bits : new int[]{2048, 3072, 4096}) {
             String pem = realPem(bits);
             String out = assertDoesNotThrow(() -> Redact.scrub("failed with key " + pem + " end"));
-            assertEquals("failed with key [redacted]
- end", out);
+            assertEquals("failed with key [redacted]\n end", out);
             assertDoesNotThrow(() -> new AuthFIException("x " + pem, 500));
         }
         String escaped = realPem(4096).replace("\n", "\n");
