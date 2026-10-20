@@ -45,10 +45,12 @@ public final class AgentDiscovery {
     private final List<String> grantTypes;
     private final String requestApprovalEndpoint;
     private final String approvalEndpoint;
+    private final String issuer;
 
     private AgentDiscovery(String tokenEndpoint, String backchannelEndpoint,
                            List<String> authMethods, List<String> grantTypes,
-                           String requestApprovalEndpoint, String approvalEndpoint) {
+                           String requestApprovalEndpoint, String approvalEndpoint, String issuer) {
+        this.issuer = issuer;
         this.requestApprovalEndpoint = requestApprovalEndpoint;
         this.approvalEndpoint = approvalEndpoint;
         this.tokenEndpoint = tokenEndpoint;
@@ -65,6 +67,11 @@ public final class AgentDiscovery {
     /** Where an agent asks a person to authorise it, or null when the deployment does not offer it. */
     public String backchannelEndpoint() {
         return backchannelEndpoint;
+    }
+
+    /** The issuer the deployment advertises, which an approval request names as the audience of its assertion. */
+    public String issuer() {
+        return issuer;
     }
 
     /** Where an agent asks for a human approval, or null when the deployment does not advertise it. */
@@ -140,10 +147,16 @@ public final class AgentDiscovery {
         return new AgentDiscovery(secure(token, "token endpoint"), secure(backchannel, "backchannel endpoint"), methods,
             strings(methodsDoc.get("grant_types_supported")),
             secure(str(ep.get("request_approval")), "approval endpoint"),
-            secure(str(ep.get("approval")), "approval status endpoint"));
+            secure(str(ep.get("approval")), "approval status endpoint"), issuerOf(as, agent));
     }
 
     /** The document, or null when the deployment does not serve it (404). Any other failure is thrown, so a transient error is never cached as "absent". */
+    private static String issuerOf(Map<String, Object> as, Map<String, Object> agent) {
+        String i = as == null ? null : str(as.get("issuer"));
+        if (i == null || i.isBlank()) i = agent == null ? null : str(agent.get("issuer"));
+        return i == null || i.isBlank() ? null : i;
+    }
+
     private static Map<String, Object> tryGet(HttpClient client, String url) {
         try {
             return get(client, url);

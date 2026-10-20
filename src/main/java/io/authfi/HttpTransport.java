@@ -289,7 +289,7 @@ public class HttpTransport {
      * Ask for a human approval at the advertised {@code request_approval} endpoint.
      *
      * <p>The request authenticates in its body, like the token mint: a fresh {@code private_key_jwt}
-     * assertion whose audience is the URL being posted to. A key-registered agent has no secret,
+     * assertion whose audience is the issuer. A key-registered agent has no secret,
      * so the secret path exists only for a legacy agent that was registered with one.
      */
     public String requestApproval(String action, Map<String, Object> context) {
@@ -307,8 +307,11 @@ public class HttpTransport {
         body.put("context", context != null ? context : Map.of());
         if (config.hasAgentKey()) {
             body.put("client_assertion_type", ClientAssertion.TYPE);
+            // The audience is the issuer: the edge rewrites the path, so the URL dialled is not the URL
+            // the service sees, but the issuer is accepted as is.
+            String audience = d.issuer() != null ? d.issuer() : config.issuer();
             body.put("client_assertion", ClientAssertion.build(
-                config.agentId(), url, config.agentKeyId(), config.agentPrivateKey()));
+                config.agentId(), audience, config.agentKeyId(), config.agentPrivateKey()));
         } else if (config.agentSecret() != null) {
             body.put("client_secret", config.agentSecret());
         } else {

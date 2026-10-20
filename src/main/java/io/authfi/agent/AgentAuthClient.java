@@ -64,16 +64,13 @@ public class AgentAuthClient {
      */
     public ApprovalRequest requestApproval(String action, Map<String, Object> context) {
         requireAgentMode();
-        String jsonBody = http.requestApproval(action, context);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resp = gson.fromJson(jsonBody, Map.class);
-        Number expires = (Number) resp.get("expires_at");
-        return new ApprovalRequest(
-            asString(resp.get("approval_id")),
-            asString(resp.get("status")),
-            expires != null ? expires.longValue() : 0L,
-            asString(resp.get("poll_url"))
-        );
+        Map<String, Object> resp = unwrap(http.requestApproval(action, context));
+        String id = asString(resp.get("approval_id"));
+        if (id == null || id.isBlank()) {
+            throw new AuthFIException("The approval request was accepted but carried no approval id.", 502);
+        }
+        return new ApprovalRequest(id, asString(resp.get("status")), epoch(resp.get("expires_at")),
+            asString(resp.get("poll_url")));
     }
 
     /** A single poll of an approval, with the agent's token. Use {@link #awaitDecision} to block. */
@@ -163,31 +160,44 @@ public class AgentAuthClient {
         }
     }
 
-    private Approval parseApproval(String json, String approvalId) {
-        @SuppressWarnings("unchecked")
+    /** The platform wraps every answer as {"data": {...}}; older shapes are read as they are. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> unwrap(String json) {
         Map<String, Object> r = gson.fromJson(json, Map.class);
+        if (r == null) {
+            throw new AuthFIException("The approval answer was empty.", 502);
+        }
+        return r.get("data") instanceof Map ? (Map<String, Object>) r.get("data") : r;
+    }
+
+    /** Epoch seconds from either a number or an RFC 3339 timestamp; 0 when absent. */
+    private static long epoch(Object o) {
+        if (o instanceof Number n) return n.longValue();
+        if (o instanceof String t && !t.isBlank()) {
+            try {
+                return java.time.Instant.parse(t).getEpochSecond();
+            } catch (java.time.format.DateTimeParseException e) {
+                return 0L;
+            }
+        }
+        return 0L;
+    }
+
+    private Approval parseApproval(String json, String approvalId) {
+        Map<String, Object> r = unwrap(json);
         String status = asString(r.get("status"));
-        if (status == null) status = "pending";
+        if (status == null) {
+            throw new AuthFIException("The approval answer carried no status.", 502);
+        }
 
         return switch (status) {
-            case "approved" -> {
-                Number approvedAt = (Number) r.get("approved_at");
-                yield new Approval.Approved(approvalId,
-                    asString(r.get("approver_user_id")),
-                    approvedAt != null ? approvedAt.longValue() : 0L);
-            }
-            case "denied" -> {
-                Number deniedAt = (Number) r.get("denied_at");
-                yield new Approval.Denied(approvalId,
-                    asString(r.get("reason")),
-                    deniedAt != null ? deniedAt.longValue() : 0L);
-            }
+            case "approved" -> new Approval.Approved(approvalId,
+                asString(r.get("approver_user_id")), epoch(r.getOrDefault("resolved_at", r.get("approved_at"))));
+            case "denied" -> new Approval.Denied(approvalId,
+                asString(r.get("reason")), epoch(r.getOrDefault("resolved_at", r.get("denied_at"))));
             case "expired" -> new Approval.Expired(approvalId);
-            default -> {
-                Number expiresAt = (Number) r.get("expires_at");
-                yield new Approval.Pending(approvalId,
-                    expiresAt != null ? expiresAt.longValue() : 0L);
-            }
+            case "pending" -> new Approval.Pending(approvalId, epoch(r.get("expires_at")));
+            default -> throw new AuthFIException("The approval has an unknown status: " + status, 502);
         };
     }
 

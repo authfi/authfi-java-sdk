@@ -43,7 +43,7 @@ class AgentFlowTest {
         base = "http://127.0.0.1:" + server.getAddress().getPort();
         // Authorization-server metadata: the one token endpoint. The agent document still advertises
         // the deprecated token route, which must NOT be used.
-        reply("/.well-known/oauth-authorization-server", 200, "{\"token_endpoint\":\"" + base + "/oauth/token\","
+        reply("/.well-known/oauth-authorization-server", 200, "{\"issuer\":\"" + base + "\",\"token_endpoint\":\"" + base + "/oauth/token\","
             + "\"token_endpoint_auth_methods_supported\":[\"private_key_jwt\"],"
             + "\"backchannel_authentication_endpoint\":\"" + base + "/ciba\"}");
         reply("/.well-known/agent-configuration", 200, "{\"endpoints\":{"
@@ -63,10 +63,13 @@ class AgentFlowTest {
             auth.add(String.valueOf(ex.getRequestHeaders().getFirst("Authorization")));
             if (ex.getRequestMethod().equals("POST")) {
                 requests.add("POST /approvals " + body);
-                answer(ex, 202, "{\"approval_id\":\"ap-1\",\"status\":\"pending\",\"expires_at\":123}");
+                answer(ex, 202, "{\"data\":{\"approval_id\":\"ap-1\",\"status\":\"pending\",\"expires_at\":\"2026-10-21T00:00:00Z\"}}");
             } else {
                 requests.add(ex.getRequestMethod() + " " + ex.getRequestURI().getPath());
-                answer(ex, 200, "{\"status\":\"approved\",\"approver_user_id\":\"usr_9\",\"approved_at\":5}");
+                String id = ex.getRequestURI().getPath().substring("/approvals/".length());
+                String status = id.startsWith("ap-") && id.length() > 3 ? id.substring(3) : "approved";
+                answer(ex, 200, "{\"data\":{\"approval_id\":\"" + id + "\",\"status\":\"" + status + "\",\"approver_user_id\":\"usr_9\","
+                    + "\"expires_at\":\"2026-10-21T00:00:00Z\",\"resolved_at\":\"2026-10-20T12:00:00Z\"}}");
             }
         });
         server.start();
@@ -139,12 +142,14 @@ class AgentFlowTest {
     }
 
     @Test
-    void anApprovalRequestIsSignedForItsEndpointAndCarriesNoSecret() throws Exception {
+    void anApprovalRequestIsSignedForTheIssuerAndCarriesNoSecret() throws Exception {
         start();
         var http = transport();
         var client = new AgentAuthClient(configOf(http), http);
         var req = client.requestApproval("send_email", Map.of("to", "boss"));
         assertEquals("ap-1", req.approvalId());
+        assertEquals("pending", req.status());
+        assertEquals(java.time.Instant.parse("2026-10-21T00:00:00Z").getEpochSecond(), req.expiresAtEpochSec());
 
         String posted = requests.stream().filter(r -> r.startsWith("POST /approvals ")).findFirst().orElseThrow();
         String json = posted.substring("POST /approvals ".length());
@@ -153,7 +158,7 @@ class AgentFlowTest {
         Map<String, Object> body = new Gson().fromJson(json, Map.class);
         assertEquals("agt_1", body.get("agent_id"));
         assertEquals("urn:ietf:params:oauth:client-assertion-type:jwt-bearer", body.get("client_assertion_type"));
-        assertion((String) body.get("client_assertion"), base + "/approvals");
+        assertion((String) body.get("client_assertion"), base);
     }
 
     @Test
@@ -161,9 +166,9 @@ class AgentFlowTest {
         start();
         var http = transport();
         var client = new AgentAuthClient(configOf(http), http);
-        Approval a = client.checkApproval("ap-1");
+        Approval a = client.checkApproval("ap-approved");
         assertInstanceOf(Approval.Approved.class, a);
-        assertTrue(requests.contains("GET /approvals/ap-1"), requests.toString());
+        assertTrue(requests.contains("GET /approvals/ap-approved"), requests.toString());
         assertEquals("Bearer tok-1", auth.get(auth.size() - 1));
     }
 
@@ -247,5 +252,19 @@ class AgentFlowTest {
         http.approvalStatus("a/b c");
         assertTrue(requests.contains("GET /approvals/a/b c") || requests.stream().anyMatch(r -> r.startsWith("GET /approvals/a")), requests.toString());
         assertTrue(requests.stream().noneMatch(r -> r.equals("GET /approvals/a/b")), "the slash did not split the path");
+    }
+
+    @Test
+    void everyApprovalStatusOnTheWireIsReadTyped() throws Exception {
+        start();
+        var http = transport();
+        var client = new AgentAuthClient(configOf(http), http);
+        var approved = assertInstanceOf(Approval.Approved.class, client.checkApproval("ap-approved"));
+        assertEquals("usr_9", approved.approverUserId());
+        assertEquals(java.time.Instant.parse("2026-10-20T12:00:00Z").getEpochSecond(), approved.approvedAtEpochSec());
+        assertInstanceOf(Approval.Denied.class, client.checkApproval("ap-denied"));
+        assertInstanceOf(Approval.Expired.class, client.checkApproval("ap-expired"));
+        assertInstanceOf(Approval.Pending.class, client.checkApproval("ap-pending"));
+        assertEquals(502, assertThrows(AuthFIException.class, () -> client.checkApproval("ap-weird")).getStatus());
     }
 }
